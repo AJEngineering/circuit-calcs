@@ -5,6 +5,8 @@ and the drawing redraws as you type.
 
 **[Open it →](https://ajengineering.github.io/circuit-calcs/)**
 
+![Circuit Calcs](calc.png)
+
 No server, no build step, no dependencies, no account, nothing to install. Download `calc.html`,
 open it in a browser, and it works — off a disk, off a USB stick, or from wherever you serve it.
 The page loads nothing external and makes no network request at all, so it works with the wire
