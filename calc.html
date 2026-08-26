@@ -1,0 +1,1834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Circuit Calcs — bench calculators that draw themselves</title>
+<meta name="description" content="Twenty-five bench calculators, each drawn as a schematic that redraws as you type. One HTML file, no server, no dependencies.">
+<style>
+:root{
+  /* palette: printed bin label on the bench — paper, Kapton amber, ESD blue */
+  --paper:#F7F6F2; --card:#FFFFFF; --ink:#16181C; --ink2:#5C636E; --ink3:#8D939C;
+  --rule:#DCDAD3; --rule2:#EDEBE5;
+  --kapton:#D9871A; --kapton-soft:#FBEBD0;
+  --esd:#2F6F8F; --esd-soft:#E4EFF5;
+  --alert:#C0304F; --alert-soft:#FBE3E8;
+  --ok:#2C7A50;
+  --label:"Arial Narrow","Helvetica Neue Condensed","Liberation Sans Narrow",system-ui,sans-serif;
+  --mono:ui-monospace,"Cascadia Mono",Consolas,"SF Mono","DejaVu Sans Mono",monospace;
+  --ui:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}   /* author rules must not beat the hidden attribute */
+html,body{margin:0;height:100%}
+body{background:var(--paper);color:var(--ink);font-family:var(--ui);font-size:14px;
+     -webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0}
+
+/* ---------- micro label type, the vernacular of a parts bin ---------- */
+.lab{font-family:var(--label);text-transform:uppercase;letter-spacing:.12em;
+     font-size:11px;color:var(--ink3);font-weight:700}
+
+/* ---------- top bar ---------- */
+.top{position:sticky;top:0;z-index:30;display:grid;
+     grid-template-columns:auto 1fr auto;gap:18px;align-items:center;
+     padding:10px 18px;background:var(--card);border-bottom:1px solid var(--rule)}
+.brand{display:flex;flex-direction:column;line-height:1.05}
+.brand-mark{font-family:var(--label);font-weight:700;font-size:20px;letter-spacing:.18em;
+            text-transform:uppercase}
+.brand-sub{font-family:var(--mono);font-size:10px;color:var(--ink3);letter-spacing:.02em}
+.searchwrap{position:relative;max-width:620px}
+#q{width:100%;padding:11px 40px 11px 14px;border:1.5px solid var(--rule);border-radius:2px;
+   background:var(--paper);font-family:var(--mono);font-size:14px;outline:0}
+#q:focus{border-color:var(--kapton);background:#fff;box-shadow:0 0 0 3px var(--kapton-soft)}
+.hint{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-family:var(--mono);
+      font-size:11px;color:var(--ink3);border:1px solid var(--rule);border-radius:3px;padding:1px 6px}
+.views{display:flex;gap:2px}
+.views button{font-family:var(--label);text-transform:uppercase;letter-spacing:.1em;font-size:12px;
+              font-weight:700;color:var(--ink2);padding:8px 11px;border-bottom:2px solid transparent}
+.views button:hover{color:var(--ink)}
+.views button.on{color:var(--ink);border-bottom-color:var(--kapton)}
+
+/* ---------- shell ---------- */
+main{display:grid;grid-template-columns:236px 1fr;align-items:start;gap:0}
+main.solo{grid-template-columns:1fr}   /* About: no rail, so no empty column */
+.rail{position:sticky;top:57px;max-height:calc(100vh - 57px);overflow:auto;
+      padding:16px 14px 40px;border-right:1px solid var(--rule)}
+.stage{padding:16px 18px 60px;min-width:0}
+
+/* ---------- signature: the drawer wall ---------- */
+.wall{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:8px 0 20px}
+.drawer{position:relative;aspect-ratio:1.35;border:1px solid var(--rule);background:var(--card);
+        display:flex;flex-direction:column;justify-content:flex-end;padding:3px 4px;overflow:hidden}
+.drawer .fill{position:absolute;left:0;right:0;bottom:0;background:var(--esd-soft)}
+.drawer .k{position:relative;font-family:var(--label);font-weight:700;font-size:15px;line-height:1}
+.drawer .n{position:relative;font-family:var(--mono);font-size:9px;color:var(--ink3)}
+.drawer:hover{border-color:var(--esd)}
+.drawer.on{border-color:var(--esd);border-width:2px;padding:2px 3px}
+.drawer.on .fill{background:var(--esd);opacity:.16}
+.drawer.ghost{border-style:dashed;color:var(--ink3);cursor:pointer}
+.drawer.ghost .k{color:var(--kapton)}
+.drawer.ghost:hover{border-color:var(--kapton);background:var(--kapton-soft)}
+
+.railsec{margin-bottom:18px}
+.railsec h3{margin:0 0 7px;font:inherit}
+.chiprow{display:flex;flex-wrap:wrap;gap:4px}
+.chip{font-family:var(--mono);font-size:11px;padding:3px 7px;border:1px solid var(--rule);
+      background:var(--card);border-radius:2px;color:var(--ink2)}
+.chip:hover{border-color:var(--ink3);color:var(--ink)}
+.chip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.chip.alert.on{background:var(--alert);border-color:var(--alert)}
+.catlist{display:flex;flex-direction:column;gap:1px;margin-top:6px}
+.cat{display:flex;justify-content:space-between;gap:8px;padding:3px 6px;font-size:12.5px;
+     border-radius:2px;text-align:left;width:100%}
+.cat span:last-child{font-family:var(--mono);font-size:10.5px;color:var(--ink3)}
+.cat:hover{background:var(--rule2)}
+.cat.on{background:var(--ink);color:#fff}
+.cat.on span:last-child{color:#fff;opacity:.65}
+.cat.none{color:var(--ink3)}
+.cat span:first-child{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cat span:last-child{flex:none}
+
+/* ---------- part rows: printed bin labels ---------- */
+.tools{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.count{font-family:var(--mono);font-size:12px;color:var(--ink2)}
+.grow{flex:1}
+select.sel{border:1px solid var(--rule);background:var(--card);padding:5px 8px;font-family:var(--mono);
+           font-size:12px;border-radius:2px}
+.btn{font-family:var(--label);text-transform:uppercase;letter-spacing:.1em;font-weight:700;font-size:12px;
+     border:1.5px solid var(--ink);padding:7px 13px;border-radius:2px;background:var(--ink);color:#fff}
+.btn:hover{background:#000}
+.btn.ghost{background:none;color:var(--ink)}
+.btn.ghost:hover{background:var(--rule2)}
+a.btn{display:inline-block;text-decoration:none}   /* a link wearing a button */
+
+/* ---------- moving a category up or down its list ---------- */
+.ord{font-family:var(--mono);font-size:14px;color:var(--ink3);padding:0 4px;line-height:1}
+.ord:hover{color:var(--kapton)}
+.ord[disabled]{opacity:.22;cursor:default}
+.ord[disabled]:hover{color:var(--ink3)}
+.grip{color:var(--ink3);cursor:grab;padding:0 2px;font-size:13px;line-height:1;user-select:none}
+tr[data-catrow]{cursor:grab}
+tr[data-catrow].dragging{opacity:.35}
+tr[data-catrow].dropabove td{box-shadow:inset 0 2px 0 var(--kapton)}
+tr[data-catrow].dropbelow td{box-shadow:inset 0 -2px 0 var(--kapton)}
+
+.rows{display:flex;flex-direction:column;gap:5px}
+.row{display:grid;grid-template-columns:56px 1fr auto;background:var(--card);
+     border:1px solid var(--rule);border-radius:2px}
+.row{cursor:pointer}
+.row:hover{border-color:var(--ink3)}
+.row:hover .more{color:var(--ink);border-color:var(--ink3)}
+.row .tab{background:var(--esd-soft);border-right:1px solid var(--rule);display:flex;
+          flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:6px 2px}
+.row .tab b{font-family:var(--label);font-size:16px;font-weight:700;letter-spacing:.04em;color:var(--esd)}
+.row .tab small{font-family:var(--mono);font-size:8.5px;color:var(--ink3)}
+.row .tab.none{background:var(--rule2)}
+.row .tab.none b{color:var(--ink3)}
+.row .body{padding:8px 12px;min-width:0}
+.line1{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+.pn{font-family:var(--mono);font-size:13.5px;font-weight:600}
+.lcsc{font-family:var(--mono);font-size:11px;color:#fff;background:var(--ink2);padding:1px 5px;border-radius:2px}
+.ds{font-family:var(--label);text-transform:uppercase;letter-spacing:.08em;font-weight:700;font-size:9.5px;
+    color:var(--esd);border:1px solid var(--esd);padding:1px 5px;border-radius:2px;text-decoration:none}
+.ds:hover{background:var(--esd);color:#fff}
+.ds.none{color:var(--ink3);border-color:var(--rule)}      /* nothing saved: the product page instead */
+.ds.none:hover{background:var(--ink3);color:#fff;border-color:var(--ink3)}
+.mfrtag{font-family:var(--label);text-transform:uppercase;letter-spacing:.08em;font-weight:700;font-size:10.5px;
+        color:var(--esd);border:1px solid var(--esd);background:var(--esd-soft);padding:1px 6px;border-radius:2px}
+.mfrtag:hover{background:var(--esd);color:#fff}
+.val{font-family:var(--mono);font-size:12.5px;color:var(--kapton);font-weight:600}
+.line2{margin-top:3px;font-size:12px;color:var(--ink2);display:flex;gap:8px;flex-wrap:wrap}
+.line2 em{font-style:normal;font-family:var(--mono);font-size:11px;color:var(--ink3)}
+.dot{color:var(--rule)}
+.qty{display:flex;align-items:center;gap:2px;padding:6px 8px 6px 4px;border-left:1px solid var(--rule2)}
+.qnum{font-family:var(--mono);font-size:19px;font-weight:600;min-width:52px;text-align:right;
+      padding-right:6px;font-variant-numeric:tabular-nums}
+.low .qnum{color:var(--alert)}
+.low{border-left:3px solid var(--alert)}
+.step{width:26px;height:26px;border:1px solid var(--rule);border-radius:2px;font-family:var(--mono);
+      font-size:14px;color:var(--ink2);line-height:1}
+.step:hover{border-color:var(--ink);color:var(--ink)}
+.more{width:26px;height:26px;color:var(--ink3);font-size:13px;border:1px solid var(--rule);border-radius:2px}
+.more:hover{color:var(--ink)}
+
+/* ---------- tables (boxes / duplicates / log) ---------- */
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--rule)}
+th{font-family:var(--label);text-transform:uppercase;letter-spacing:.1em;font-size:11px;color:var(--ink2);
+   text-align:left;padding:8px 10px;border-bottom:1px solid var(--rule);white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid var(--rule2);font-size:13px;vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.m,th.m{font-family:var(--mono);font-size:12px}
+td.num,th.num{text-align:right}
+td.num{font-variant-numeric:tabular-nums}
+.linkish{color:var(--esd);text-decoration:underline;text-underline-offset:2px}
+.groupsep td{background:var(--paper);padding:3px}
+
+/* ---------- panels ---------- */
+.panel{background:var(--card);border:1px solid var(--rule);padding:16px;margin-bottom:14px}
+.panel h2{margin:0 0 4px;font-family:var(--label);text-transform:uppercase;letter-spacing:.12em;font-size:14px}
+.panel p{margin:6px 0;color:var(--ink2);font-size:13px;max-width:70ch}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 14px;font-family:var(--mono);font-size:12px;margin-top:8px}
+.kv b{font-weight:600;color:var(--ink2)}
+.stats{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:14px}
+.stat b{display:block;font-family:var(--mono);font-size:22px;font-weight:600;line-height:1.1}
+
+/* ---------- editor ---------- */
+.overlay{position:fixed;inset:0;background:rgba(22,24,28,.42);z-index:50;display:flex;
+         align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto}
+.sheet{background:var(--card);border:1px solid var(--ink);width:100%;max-width:620px;padding:20px}
+.sheet h2{margin:0 0 14px;font-family:var(--label);text-transform:uppercase;letter-spacing:.12em;font-size:15px}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}
+.f{display:flex;flex-direction:column;gap:3px}
+.f.wide{grid-column:1/-1}
+.f input,.f select,.f textarea{border:1px solid var(--rule);background:var(--paper);padding:7px 9px;
+                               font-family:var(--mono);font-size:13px;border-radius:2px;outline:0;width:100%}
+.f input:focus,.f select:focus,.f textarea:focus{border-color:var(--kapton);background:#fff}
+.f small{color:var(--ink3);font-size:11px}
+.sheetbar{display:flex;gap:8px;margin-top:16px;align-items:center}
+.danger{color:var(--alert);border-color:var(--alert);background:none}
+.danger:hover{background:var(--alert-soft)}
+
+/* ---------- the LCSC lookup sitting in the editor ---------- */
+.lcscrow{display:flex;gap:6px}
+.lcscrow input{flex:1;min-width:0}
+.lcscrow .btn{white-space:nowrap;font-size:10px;padding:0 10px;border-width:1px}
+.btn[disabled]{opacity:.45;cursor:default}
+.btn[disabled]:hover{background:var(--ink)}
+.btn.ghost[disabled]:hover{background:none}
+.lcscnote{grid-column:1/-1;font-family:var(--mono);font-size:11.5px;color:var(--ink2);line-height:1.65}
+.lcscnote:empty{display:none}
+.lcscnote b{color:var(--ink);font-weight:600}
+.lcscnote .bad{color:var(--alert)}
+/* a value LCSC offers for a field already filled in - never taken unasked */
+.take{font-family:var(--mono);font-size:11px;border:1px solid var(--rule);background:var(--paper);
+      padding:2px 7px;border-radius:2px;margin:3px 4px 0 0;display:inline-block;color:var(--ink)}
+.take:hover{border-color:var(--kapton);background:#fff}
+.take em{font-style:normal;color:var(--ink3)}
+.take.gone{opacity:.45;text-decoration:line-through}
+.f input.fresh,.f select.fresh{background:var(--kapton-soft);border-color:var(--kapton)}
+
+.fatal{margin:18px;padding:14px 16px;border:2px solid var(--alert);background:var(--alert-soft);
+       font-family:var(--mono);font-size:13px;white-space:pre-wrap}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:#fff;
+       padding:9px 16px;border-radius:2px;font-family:var(--mono);font-size:12.5px;z-index:60;
+       display:flex;align-items:center;gap:14px}
+.toast .undo{font-family:var(--label);text-transform:uppercase;letter-spacing:.1em;font-weight:700;
+             font-size:11px;color:var(--kapton);border:1px solid var(--kapton);padding:3px 9px;border-radius:2px}
+.toast .undo:hover{background:var(--kapton);color:var(--ink)}
+.noresult{padding:40px 4px;color:var(--ink2)}
+.noresult b{display:block;font-family:var(--label);text-transform:uppercase;letter-spacing:.12em;
+         font-size:15px;color:var(--ink);margin-bottom:4px}
+
+.stockbtn{font-family:var(--label);text-transform:uppercase;letter-spacing:.08em;font-weight:700;
+           font-size:10px;border:1px solid currentColor;padding:2px 7px;border-radius:2px;background:none}
+.stockbtn:hover{background:var(--rule2)}
+.schem{border:1px solid var(--rule2);background:var(--paper);padding:10px 6px;margin-bottom:14px;border-radius:2px}
+.schem svg{max-height:260px}
+@media print{ .schem{border-color:#000} }
+
+.labels{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+.label{border:1px solid var(--ink);background:var(--card);padding:8px 10px;break-inside:avoid}
+.label-h{display:flex;align-items:baseline;justify-content:space-between;border-bottom:2px solid var(--ink);
+         padding-bottom:4px;margin-bottom:5px}
+.label-h b{font-family:var(--label);font-size:26px;font-weight:700;letter-spacing:.06em;line-height:1}
+.label-h span{font-family:var(--mono);font-size:9.5px;color:var(--ink2)}
+.label ul{list-style:none;margin:0;padding:0}
+.label li{display:grid;grid-template-columns:1fr auto auto;gap:6px;font-size:10px;line-height:1.45;
+          border-bottom:1px dotted var(--rule2);padding:1px 0}
+.label li span{font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.label li em{font-style:normal;color:var(--ink3);font-family:var(--mono);font-size:9px}
+.label li b{font-family:var(--mono);font-weight:600;min-width:34px;text-align:right}
+
+@media print{
+  .top,.rail,.noprint{display:none!important}
+  main{display:block}
+  .stage{padding:0}
+  body{background:#fff}
+  .labels{grid-template-columns:repeat(3,1fr);gap:6px}
+  .label{border-color:#000}
+  @page{margin:10mm}
+}
+
+@media (max-width:860px){
+  main{grid-template-columns:1fr}
+  .rail{position:static;max-height:none;border-right:0;border-bottom:1px solid var(--rule)}
+  .wall{grid-template-columns:repeat(8,1fr)}
+  .top{grid-template-columns:1fr;gap:10px}
+  .views{overflow:auto}
+}
+@media (prefers-reduced-motion:no-preference){
+  .row{transition:border-color .12s ease}
+  .drawer{transition:border-color .12s ease}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <span class="brand-mark">Circuit Calcs</span>
+    <span class="brand-sub">twenty-five, each drawn as a schematic</span>
+  </div>
+  <div class="searchwrap">
+    <input id="q" type="search" placeholder="divider   ·   trace width   ·   AWG   ·   buck" autocomplete="off" spellcheck="false">
+    <span class="hint">/</span>
+  </div>
+  <nav class="views" id="views">
+    <a class="btn ghost" id="binLink" href="https://ajengineering.github.io/parts-bin-app/" target="_blank" rel="noreferrer">Parts Bin &#8599;</a>
+  </nav>
+</header>
+
+<main>
+  <aside class="rail" id="rail">
+    <div class="railsec">
+      <h3 class="lab" id="catHead">Formulas</h3>
+      <div class="catlist" id="cats"></div>
+    </div>
+  </aside>
+  <section class="stage" id="stage"></section>
+</main>
+
+<noscript><div class="fatal">This viewer is not running JavaScript. Download the file and open it in Firefox, Chrome or Edge.</div></noscript>
+
+<script>
+"use strict";
+const APP_VERSION = "1.0.0";
+const $  = (s,r=document)=>r.querySelector(s);
+const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const num = n => (Math.round(n*100)/100).toLocaleString("en-US");
+
+/* What the page remembers between visits: which calculator was open and what
+   was typed into each. Nothing else - there is nothing else to keep.       */
+const KEY = "circuit-calcs-v1";
+const ui = {calc:"ohm", calcVals:{}, q:""};
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify({calc:ui.calc, calcVals:ui.calcVals})); }catch(e){} }
+function load(){
+  try{
+    const t = localStorage.getItem(KEY);
+    if(!t) return;
+    const s = JSON.parse(t);
+    if(s && typeof s==="object"){
+      if(s.calc) ui.calc = s.calc;
+      if(s.calcVals && typeof s.calcVals==="object") ui.calcVals = s.calcVals;
+    }
+  }catch(e){}
+}
+
+/* ---------------------------------------------------------- calculators ---
+   Engineering notation in and out. Input is case sensitive on purpose, the
+   way a schematic is: M is mega, m is milli. A letter may also stand in for
+   the decimal point, so 4k7 is 4700 and 1R2 is 1.2.                        */
+const SI_IN = {p:1e-12, n:1e-9, u:1e-6, "\u00b5":1e-6, m:1e-3, R:1, r:1, E:1,
+               k:1e3, K:1e3, M:1e6, G:1e9, T:1e12};
+/* Units a field may be labelled with, longest first, so "\u00b0C/W" is taken off
+   before "\u00b0C" and "mm\u00b2" before "mm". Stripped only from the end: a unit in
+   the middle of a number is not a unit.
+
+   A bare trailing m is deliberately absent. It is milli far more often than
+   it is metres, and the hint under the boxes says so; taking it as a unit
+   would quietly turn 100m into a tenth of what was meant.                 */
+const UNIT_TAIL = /(?:\u00b0C\/W|mm\u00b2|\u00b0C|Hz|Ah|Wh|VA|oz|mm)$/;
+/* `unit` is the label on the field being read, and it settles the one case
+   nothing else can: the m in "15m". In a field measured in metres that is
+   fifteen metres; anywhere else it is fifteen thousandths. Knowing which
+   field asked is the only way to tell, so the field says.                */
+function parseSI(v, unit){
+  let s = String(v==null?"":v).trim();
+  const u = String(unit==null?"":unit).trim();
+  if(u && s.length > u.length && s.slice(-u.length) === u) s = s.slice(0, -u.length).trim();
+  const t = s.replace(UNIT_TAIL,"").replace(/[\s\u03a9FHAVWsC%\u00b0\u00d7\u00b2]/g,"");
+  if(t==="") return NaN;
+  const m = /^(-?\d*\.?\d*)([pnu\u00b5mRrEkKMGT])?(\d*)$/.exec(t);
+  if(!m) return Number(t);
+  let whole = m[1];
+  if(m[3] && m[2]) whole = whole + "." + m[3];
+  const n = parseFloat(whole);
+  if(!isFinite(n)) return NaN;
+  return n * (m[2] ? SI_IN[m[2]] : 1);
+}
+const SI_OUT = [[1e12,"T"],[1e9,"G"],[1e6,"M"],[1e3,"k"],[1,""],[1e-3,"m"],
+                [1e-6,"\u00b5"],[1e-9,"n"],[1e-12,"p"]];
+/* Only physical base units take a prefix. A percentage, a temperature, a
+   gain or a count must never come out as "500 m%" or "1.04 kmin".          */
+const SI_UNITS = {"V":1,"A":1,"\u03a9":1,"W":1,"F":1,"H":1,"Hz":1,"s":1,"Wh":1,"VA":1,"Ah":1};
+function siFmt(n, unit){
+  if(n===null || n===undefined || !isFinite(n)) return "\u2014";
+  const u = unit||"";
+  if(!SI_UNITS[u]){
+    const a0 = Math.abs(n);
+    const txt = a0>=1000 ? n.toFixed(0) : a0>=100 ? n.toFixed(1) : a0>=1 ? n.toFixed(2) :
+                a0>=0.01 ? n.toFixed(3) : n.toPrecision(3);
+    return String(txt).replace(/(\.\d*?)0+$/,"$1").replace(/\.$/,"") + (u?" "+u:"");
+  }
+  if(n===0) return "0 " + u;
+  const a = Math.abs(n);
+  let step = SI_OUT[SI_OUT.length-1];
+  for(const s of SI_OUT) if(a >= s[0]){ step = s; break; }
+  const val = n/step[0];
+  const txt = Math.abs(val)>=100 ? val.toFixed(1) : Math.abs(val)>=10 ? val.toFixed(2) : val.toFixed(3);
+  return txt.replace(/\.?0+$/,"") + " " + step[1] + (unit||"");
+}
+/* nearest standard value, for a resistor or capacitor that has to be bought */
+const E24 = [10,11,12,13,15,16,18,20,22,24,27,30,33,36,39,43,47,51,56,62,68,75,82,91];
+function nearestE24(x){
+  if(!isFinite(x) || x<=0) return NaN;
+  const dec = Math.floor(Math.log10(x));
+  let best = null, bd = Infinity;
+  for(const d of [dec-1, dec, dec+1]) for(const e of E24){
+    const v = e * Math.pow(10, d-1);
+    const diff = Math.abs(v-x);
+    if(diff < bd){ bd = diff; best = v; }
+  }
+  return best;
+}
+const F  = (k,label,unit,ph)=>({k,label,unit,ph});            /* engineering number */
+const FT = (k,label,ph)=>({k,label,ph,t:"text"});             /* raw text, not parsed */
+const FS = (k,label,opts,def)=>({k,label,opts,def,t:"sel"});  /* dropdown */
+const R = (label,value,unit,note)=>({label,value,unit,note});
+/* same, but the value names a part you might already own */
+const RP = (label,value,unit,note)=>({label,value,unit,note,find:true});
+const CALCS = [
+{id:"ohm", group:"Basics", name:"Ohm's law & power",
+ note:"Fill any two boxes. The other two follow.",
+ fields:[F("V","Voltage","V","12"),F("I","Current","A","0.5"),F("R","Resistance","\u03a9","24"),F("P","Power","W","6")],
+ run(v){
+   let {V,I,R:r,P} = v;
+   const has = x=>isFinite(x) && x!==0 || x===0 && isFinite(x);
+   if(has(V)&&has(I)){ r=V/I; P=V*I; }
+   else if(has(V)&&has(r)){ I=V/r; P=V*V/r; }
+   else if(has(V)&&has(P)){ I=P/V; r=V*V/P; }
+   else if(has(I)&&has(r)){ V=I*r; P=I*I*r; }
+   else if(has(I)&&has(P)){ V=P/I; r=P/(I*I); }
+   else if(has(r)&&has(P)){ V=Math.sqrt(P*r); I=Math.sqrt(P/r); }
+   else return null;
+   return [R("Voltage",V,"V"),R("Current",I,"A"),R("Resistance",r,"\u03a9"),R("Power",P,"W")];
+ }},
+
+{id:"divider", group:"Basics", name:"Voltage divider",
+ note:"R1 sits between the input and the tap, R2 between the tap and ground. Leave R2 empty and give a target output to size it.",
+ fields:[F("Vin","Input","V","12"),F("R1","R1 top","\u03a9","10k"),F("R2","R2 bottom","\u03a9","3k3"),F("Vt","Target output (optional)","V","3.3")],
+ run(v){
+   const {Vin,R1,R2,Vt} = v;
+   if(isFinite(Vin)&&isFinite(R1)&&isFinite(Vt)&&!isFinite(R2)){
+     if(Vt>=Vin) return [R("R2","\u2014","","target must be below the input")];
+     const r2 = R1*Vt/(Vin-Vt);
+     const e  = nearestE24(r2);
+     return [R("R2 needed",r2,"\u03a9"),RP("Nearest E24",e,"\u03a9"),
+             R("Output with E24", Vin*e/(R1+e),"V"),
+             R("Divider current", Vin/(R1+e),"A")];
+   }
+   if(!isFinite(Vin)||!isFinite(R1)||!isFinite(R2)) return null;
+   const I = Vin/(R1+R2), Vo = Vin*R2/(R1+R2);
+   return [R("Output",Vo,"V"),R("Divider current",I,"A"),
+           R("Loss in R1",I*I*R1,"W"),R("Loss in R2",I*I*R2,"W"),
+           R("Thevenin resistance",R1*R2/(R1+R2),"\u03a9","source impedance seen by the load")];
+ }},
+
+{id:"led", group:"Basics", name:"LED series resistor",
+ fields:[F("Vs","Supply","V","5"),F("Vf","LED forward drop","V","2.1"),F("If","LED current","A","10m")],
+ run(v){
+   const {Vs,Vf,If} = v;
+   if(!isFinite(Vs)||!isFinite(Vf)||!isFinite(If)||If<=0) return null;
+   if(Vf>=Vs) return [R("Resistor","\u2014","","the supply must exceed the forward drop")];
+   const r = (Vs-Vf)/If, e = nearestE24(r);
+   return [R("Resistor",r,"\u03a9"),RP("Nearest E24",e,"\u03a9"),
+           R("Current with E24",(Vs-Vf)/e,"A"),
+           R("Dissipation",(Vs-Vf)*(Vs-Vf)/e,"W","pick a part rated at least twice this")];
+ }},
+
+{id:"rc", group:"Filters", name:"RC filter & time constant",
+ fields:[F("R","Resistance","\u03a9","10k"),F("C","Capacitance","F","100n"),F("f","Frequency for reactance","Hz","1k")],
+ run(v){
+   const {R:r,C,f} = v;
+   if(!isFinite(r)||!isFinite(C)||r<=0||C<=0) return null;
+   const tau = r*C, fc = 1/(2*Math.PI*tau);
+   const out = [R("Cut-off \u22123 dB",fc,"Hz"),R("Time constant \u03c4",tau,"s"),
+                R("Rise time 10\u201390 %",2.2*tau,"s"),R("Settle to 99 %",5*tau,"s")];
+   if(isFinite(f)&&f>0){
+     const xc = 1/(2*Math.PI*f*C);
+     out.push(R("Xc at "+siFmt(f,"Hz"),xc,"\u03a9"));
+     out.push(R("Attenuation at that point", 20*Math.log10(xc/Math.sqrt(r*r+xc*xc)),"dB"));
+   }
+   return out;
+ }},
+
+{id:"lc", group:"Filters", name:"LC resonance",
+ fields:[F("L","Inductance","H","10u"),F("C","Capacitance","F","100n"),F("Rs","Series resistance (optional)","\u03a9","0.5")],
+ run(v){
+   const {L,C,Rs} = v;
+   if(!isFinite(L)||!isFinite(C)||L<=0||C<=0) return null;
+   const f0 = 1/(2*Math.PI*Math.sqrt(L*C)), Z = Math.sqrt(L/C);
+   const out = [R("Resonant frequency",f0,"Hz"),R("Characteristic impedance",Z,"\u03a9"),
+                R("XL = XC at f0",2*Math.PI*f0*L,"\u03a9")];
+   if(isFinite(Rs)&&Rs>0){ out.push(R("Q factor",Z/Rs,"")); out.push(R("Bandwidth",f0*Rs/Z,"Hz")); }
+   return out;
+ }},
+
+{id:"opinv", group:"Op-amps", name:"Inverting amplifier",
+ note:"Rin from the source to the inverting input, Rf from the output back to it.",
+ fields:[F("Rin","Rin","\u03a9","1k"),F("Rf","Rf","\u03a9","10k"),F("Vin","Input (optional)","V","0.1")],
+ run(v){
+   const {Rin,Rf,Vin} = v;
+   if(!isFinite(Rin)||!isFinite(Rf)||Rin<=0) return null;
+   const g = -Rf/Rin;
+   const out = [R("Gain",g,"\u00d7"),R("Gain",20*Math.log10(Math.abs(g)),"dB"),
+                R("Input impedance",Rin,"\u03a9")];
+   if(isFinite(Vin)) out.push(R("Output",g*Vin,"V"));
+   out.push(R("Bias-balance resistor",Rin*Rf/(Rin+Rf),"\u03a9","on the non-inverting input"));
+   return out;
+ }},
+
+{id:"opnon", group:"Op-amps", name:"Non-inverting amplifier",
+ note:"Rg from the inverting input to ground, Rf from the output back to it. Rf = 0 gives a buffer.",
+ fields:[F("Rg","Rg to ground","\u03a9","1k"),F("Rf","Rf feedback","\u03a9","10k"),F("Vin","Input (optional)","V","0.1")],
+ run(v){
+   const {Rg,Rf,Vin} = v;
+   if(!isFinite(Rg)||!isFinite(Rf)||Rg<=0) return null;
+   const g = 1 + Rf/Rg;
+   const out = [R("Gain",g,"\u00d7"),R("Gain",20*Math.log10(g),"dB")];
+   if(isFinite(Vin)) out.push(R("Output",g*Vin,"V"));
+   out.push(R("Feedback current at 1 V out",1/(Rg+Rf),"A"));
+   return out;
+ }},
+
+{id:"opdiff", group:"Op-amps", name:"Difference amplifier",
+ note:"R1 on each input, R2 as feedback and to ground. Matching sets the common-mode rejection.",
+ fields:[F("R1","R1 input","\u03a9","10k"),F("R2","R2 feedback","\u03a9","100k"),
+         F("V1","V1 inverting side","V","2"),F("V2","V2 non-inverting side","V","2.1")],
+ run(v){
+   const {R1,R2,V1,V2} = v;
+   if(!isFinite(R1)||!isFinite(R2)||R1<=0) return null;
+   const g = R2/R1;
+   const out = [R("Differential gain",g,"\u00d7"),R("Differential gain",20*Math.log10(g),"dB")];
+   if(isFinite(V1)&&isFinite(V2)) out.push(R("Output",g*(V2-V1),"V"));
+   out.push(R("CMRR with 1 % resistors",20*Math.log10((1+g)/0.04),"dB","worst case"));
+   out.push(R("CMRR with 0.1 % resistors",20*Math.log10((1+g)/0.004),"dB","worst case"));
+   return out;
+ }},
+
+{id:"reg", group:"Power", name:"Adjustable regulator output",
+ note:"Rtop from the output to the feedback pin, Rbot from feedback to ground. Vref is on the datasheet: 1.25 V for LM317, 0.8 V for many switchers.",
+ fields:[F("Vref","Feedback reference","V","1.25"),F("Rtop","Rtop","\u03a9","240"),
+         F("Rbot","Rbot","\u03a9","1k5"),F("Iadj","Feedback pin current (optional)","A","50u")],
+ run(v){
+   const {Vref,Rtop,Rbot,Iadj} = v;
+   if(!isFinite(Vref)||!isFinite(Rtop)||!isFinite(Rbot)||Rbot<=0) return null;
+   const base = Vref*(1+Rbot/Rtop);
+   const err  = isFinite(Iadj) ? Iadj*Rbot : 0;
+   return [R("Output",base+err,"V"),
+           R("Without pin current",base,"V"),
+           R("Shift from pin current",err,"V"),
+           R("Divider current",Vref/Rtop,"A","keep it well above the pin current")];
+ }},
+
+{id:"ldo", group:"Power", name:"Linear regulator dissipation",
+ note:"The heat a linear part has to lose, and where that puts the die.",
+ fields:[F("Vin","Input","V","12"),F("Vout","Output","V","3.3"),F("Iout","Load current","A","0.5"),
+         F("Rja","Package \u03b8JA","\u00b0C/W","50"),F("Ta","Ambient","\u00b0C","25")],
+ run(v){
+   const {Vin,Vout,Iout,Rja,Ta} = v;
+   if(!isFinite(Vin)||!isFinite(Vout)||!isFinite(Iout)) return null;
+   const Pd = (Vin-Vout)*Iout;
+   const out = [R("Dissipation",Pd,"W"),R("Efficiency",100*Vout/Vin,"%"),
+                R("Wasted as heat",100*(Vin-Vout)/Vin,"%")];
+   if(isFinite(Rja)&&isFinite(Ta)){
+     const Tj = Ta + Pd*Rja;
+     out.push(R("Junction temperature",Tj,"\u00b0C", Tj>125?"over a typical 125 \u00b0C limit":Tj>100?"getting close to the limit":"within a typical limit"));
+     out.push(R("Current at 125 \u00b0C junction",(125-Ta)/(Rja*(Vin-Vout)),"A","the most this package can pass here"));
+   }
+   return out;
+ }},
+
+{id:"buck", group:"Power", name:"Buck converter",
+ fields:[F("Vin","Input","V","12"),F("Vout","Output","V","5"),F("Iout","Load current","A","2"),
+         F("f","Switching frequency","Hz","500k"),F("L","Inductor","H","10u"),F("Cout","Output capacitor","F","22u")],
+ run(v){
+   const {Vin,Vout,Iout,f,L,Cout} = v;
+   if(!isFinite(Vin)||!isFinite(Vout)||!isFinite(f)||!isFinite(L)||f<=0||L<=0) return null;
+   const D = Vout/Vin;
+   const dI = (Vin-Vout)*D/(f*L);
+   const out = [R("Duty cycle",100*D,"%"),R("Inductor ripple \u0394IL",dI,"A")];
+   if(isFinite(Iout)){
+     out.push(R("Ripple share of load",100*dI/Iout,"%","30 \u2013 40 % is the usual target"));
+     out.push(R("Peak inductor current",Iout+dI/2,"A","the saturation rating must clear this"));
+     out.push(R("Input RMS ripple current",Iout*Math.sqrt(D*(1-D)),"A","sets the input capacitor"));
+   }
+   if(isFinite(Cout)&&Cout>0) out.push(R("Output ripple, capacitor only",dI/(8*f*Cout),"V","ESR adds \u0394IL \u00d7 ESR on top"));
+   out.push(RP("Inductor for 30 % ripple",(Vin-Vout)*D/(f*0.3*(isFinite(Iout)?Iout:1)),"H"));
+   return out;
+ }},
+
+{id:"boost", group:"Power", name:"Boost converter",
+ fields:[F("Vin","Input","V","3.7"),F("Vout","Output","V","12"),F("Iout","Load current","A","0.5"),
+         F("f","Switching frequency","Hz","500k"),F("L","Inductor","H","10u"),F("Cout","Output capacitor","F","47u")],
+ run(v){
+   const {Vin,Vout,Iout,f,L,Cout} = v;
+   if(!isFinite(Vin)||!isFinite(Vout)||!isFinite(f)||!isFinite(L)||f<=0||L<=0||Vout<=Vin) return null;
+   const D = 1 - Vin/Vout;
+   const dI = Vin*D/(f*L);
+   const out = [R("Duty cycle",100*D,"%"),R("Inductor ripple \u0394IL",dI,"A")];
+   if(isFinite(Iout)){
+     const Iin = Iout/(1-D);
+     out.push(R("Average input current",Iin,"A"),
+              R("Peak inductor current",Iin+dI/2,"A","the switch and the diode see this too"));
+   }
+   if(isFinite(Cout)&&Cout>0&&isFinite(Iout)) out.push(R("Output ripple, capacitor only",Iout*D/(f*Cout),"V"));
+   return out;
+ }},
+
+{id:"shunt", group:"Measurement", name:"Current sense shunt",
+ note:"Sizing a shunt and the amplifier in front of an ADC.",
+ fields:[F("I","Current to measure","A","10"),F("Rs","Shunt","\u03a9","5m"),F("G","Amplifier gain","\u00d7","20"),
+         F("Vref","ADC reference","V","3.3"),F("bits","ADC bits","","12")],
+ run(v){
+   const {I,Rs,G,Vref,bits} = v;
+   if(!isFinite(I)||!isFinite(Rs)||Rs<=0) return null;
+   const Vs = I*Rs, g = isFinite(G)&&G>0 ? G : 1;
+   const out = [R("Shunt voltage",Vs,"V"),R("Shunt dissipation",I*I*Rs,"W","derate the part to twice this"),
+                R("Amplifier output",Vs*g,"V")];
+   if(isFinite(Vref)&&Vref>0){
+     const full = Vref/(g*Rs);
+     out.push(R("Full scale current",full,"A", I>full?"the input above already clips":""));
+     out.push(R("Reading at this current",100*Vs*g/Vref,"% of scale"));
+     if(isFinite(bits)&&bits>0){
+       const steps = Math.pow(2,bits);
+       out.push(R("Resolution",full/steps,"A per count"));
+       out.push(R("Gain for full scale",Vref/(I*Rs),"\u00d7","if this current is meant to be full scale"));
+     }
+   }
+   return out;
+ }},
+
+{id:"trace", group:"Measurement", name:"PCB trace width, IPC-2221",
+ note:"Width for a chosen temperature rise. External traces cool better than buried ones.",
+ fields:[F("I","Current","A","16"),F("dT","Temperature rise","\u00b0C","20"),
+         F("oz","Copper weight","oz","1"),F("len","Length (optional)","m","0.1")],
+ run(v){
+   const {I,dT,oz,len} = v;
+   if(!isFinite(I)||!isFinite(dT)||!isFinite(oz)||I<=0||dT<=0||oz<=0) return null;
+   const width = (k)=>{
+     const area = Math.pow(I/(k*Math.pow(dT,0.44)), 1/0.725);   /* mils^2 */
+     return area/(oz*1.378);                                    /* mils */
+   };
+   const ext = width(0.048), int_ = width(0.024);
+   const out = [R("External layer",ext*0.0254,"mm"),R("External layer",ext,"mil"),
+                R("Internal layer",int_*0.0254,"mm"),R("Internal layer",int_,"mil")];
+   if(isFinite(len)&&len>0){
+     /* copper 1.72e-8 ohm.m, 1 oz = 34.8 um */
+     const t = oz*34.8e-6, w = ext*0.0254e-3;
+     const Rt = 1.72e-8*len/(w*t);
+     out.push(R("Resistance of the external trace",Rt,"\u03a9"),
+              R("Drop at this current",Rt*I,"V"),
+              R("Heat in the trace",Rt*I*I,"W"));
+   }
+   return out;
+ }},
+
+{id:"batt", group:"Measurement", name:"Battery runtime",
+ fields:[F("cap","Capacity","Ah","2.6"),F("I","Average current","A","120m"),F("eff","Usable fraction","%","80")],
+ run(v){
+   const {cap,I,eff} = v;
+   if(!isFinite(cap)||!isFinite(I)||I<=0) return null;
+   const k = isFinite(eff)&&eff>0 ? eff/100 : 1;
+   const h = cap*k/I;
+   return [R("Runtime",h,"h"),R("Runtime",h*60,"min"),R("Runtime",h/24,"days"),
+           R("Discharge rate",I/cap,"C","1C empties the pack in an hour")];
+ }}
+];
+
+/* ---------------------------------------------------- schematic drawing ---
+   Inline SVG, no images: it scales, it follows the page colours, and the
+   value you type appears on the part it belongs to.                        */
+const SW = 1.7;
+/* Every part declares where its terminals are, so a wire can end exactly on
+   one instead of near it. Vertical and horizontal variants are separate
+   symbols - a battery drawn on its side and wired upright looks wrong.     */
+const RL = 38, RW = 15;                       /* resistor body length, width */
+
+function W(pts){ return `<polyline points="${pts.map(p=>p.join(",")).join(" ")}" fill="none" stroke="var(--ink)" stroke-width="${SW}"/>`; }
+function DOT(x,y){ return `<circle cx="${x}" cy="${y}" r="3.2" fill="var(--ink)"/>`; }
+function TX(x,y,t,anchor,color,size){
+  if(t===undefined || t===null || t==="") return "";
+  return `<text x="${x}" y="${y}" text-anchor="${anchor||"middle"}" font-family="ui-monospace,monospace"
+    font-size="${size||11}" fill="${color||"var(--ink2)"}">${esc(t)}</text>`;
+}
+function VAL(x,y,t,anchor){ return TX(x,y,t,anchor,"var(--kapton)",11.5); }
+function NODE(x,y,label,anchor){ return TX(x,y,label,anchor||"middle","var(--esd)",11); }
+
+/* horizontal resistor: terminals (x-19,y) and (x+19,y) */
+function RESH(x,y,label,val){
+  return `<rect x="${x-RL/2}" y="${y-RW/2}" width="${RL}" height="${RW}" fill="var(--card)" stroke="var(--ink)" stroke-width="${SW}"/>`
+       + TX(x,y-14,label) + VAL(x,y+23,val);
+}
+/* vertical resistor: terminals (x,y-19) and (x,y+19) */
+function RESV(x,y,label,val){
+  return `<rect x="${x-RW/2}" y="${y-RL/2}" width="${RW}" height="${RL}" fill="var(--card)" stroke="var(--ink)" stroke-width="${SW}"/>`
+       + TX(x+14,y-3,label,"start") + VAL(x+14,y+12,val,"start");
+}
+/* vertical capacitor: terminals (x,y-4) and (x,y+4) */
+function CAPV(x,y,label,val){
+  return W([[x-13,y-4],[x+13,y-4]]) + W([[x-13,y+4],[x+13,y+4]])
+       + TX(x+19,y-4,label,"start") + VAL(x+19,y+11,val,"start");
+}
+/* horizontal capacitor: terminals (x-4,y) and (x+4,y) */
+function CAPH(x,y,label,val){
+  return W([[x-4,y-13],[x-4,y+13]]) + W([[x+4,y-13],[x+4,y+13]])
+       + TX(x,y-20,label) + VAL(x,y+28,val);
+}
+/* horizontal inductor: terminals (x-24,y) and (x+24,y) */
+function INDH(x,y,label,val){
+  let d = "";
+  for(let i=0;i<4;i++) d += `M ${x-24+i*12} ${y} a 6 6 0 0 1 12 0 `;
+  return `<path d="${d}" fill="none" stroke="var(--ink)" stroke-width="${SW}"/>`
+       + TX(x,y-13,label) + VAL(x,y+19,val);
+}
+function GND(x,y){
+  return W([[x,y],[x,y+8]]) + W([[x-11,y+8],[x+11,y+8]])
+       + W([[x-7,y+12],[x+7,y+12]]) + W([[x-3,y+16],[x+3,y+16]]);
+}
+/* vertical battery: terminals (x,y-5) top positive, (x,y+5) negative */
+function BATTV(x,y,val){
+  return W([[x-14,y-5],[x+14,y-5]]) + W([[x-7,y+5],[x+7,y+5]])
+       + TX(x-19,y-2,"+","end","var(--ink)",13) + VAL(x+19,y+2,val,"start");
+}
+/* op-amp: IN- at (x,y-h/2), IN+ at (x,y+h/2), OUT at (x+w,y) */
+function OPAMP(x,y,h){
+  const hh = h||30, w = hh*1.75;
+  return `<polygon points="${x},${y-hh} ${x},${y+hh} ${x+w},${y}" fill="var(--card)" stroke="var(--ink)" stroke-width="${SW}"/>`
+       + TX(x+8,y-hh/2+5,"\u2212","start","var(--ink)",15)
+       + TX(x+8,y+hh/2+5,"+","start","var(--ink)",14);
+}
+const OPO = h => (h||30)*1.75;                 /* output offset of an op-amp */
+function BOX(x,y,w,h,title,sub){
+  return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="var(--esd-soft)" stroke="var(--ink)" stroke-width="${SW}"/>`
+       + TX(x+w/2,y+h/2+(sub?-2:4),title,"middle","var(--ink)",12)
+       + (sub?TX(x+w/2,y+h/2+12,sub,"middle","var(--ink3)",10):"");
+}
+/* Vertical diode. The cathode bar always sits on the triangle's tip, and the
+   tip points the way conventional current flows. Terminals (x,y-8), (x,y+8).
+   DIOV_DOWN conducts downward, DIOV_UP conducts upward - a buck freewheel
+   diode is the second kind, with its cathode on the switch node.            */
+function DIOV_DOWN(x,y){
+  return `<polygon points="${x-9},${y-8} ${x+9},${y-8} ${x},${y+8}" fill="var(--ink)"/>`
+       + W([[x-11,y+8],[x+11,y+8]]);
+}
+function DIOV_UP(x,y){
+  return `<polygon points="${x-9},${y+8} ${x+9},${y+8} ${x},${y-8}" fill="var(--ink)"/>`
+       + W([[x-11,y-8],[x+11,y-8]]);
+}
+const DIOV = DIOV_DOWN;
+
+/* Zener, drawn to conduct upward the way a shunt regulator uses it: cathode
+   bar on top towards the positive rail, anode at the bottom to ground, and
+   the bar's ends bent the opposite way from each other.                     */
+function ZENER(x,y){
+  return `<polygon points="${x-9},${y+8} ${x+9},${y+8} ${x},${y-8}" fill="var(--ink)"/>`
+       + W([[x-11,y-8],[x+11,y-8]])
+       + W([[x-11,y-8],[x-16,y-13]])
+       + W([[x+11,y-8],[x+16,y-3]]);
+}
+/* horizontal diode, current to the right: terminals (x-8,y) and (x+8,y) */
+function DIOH(x,y){
+  return `<polygon points="${x-8},${y-9} ${x-8},${y+9} ${x+8},${y}" fill="var(--ink)"/>` + W([[x+8,y-10],[x+8,y+10]]);
+}
+function LEDV(x,y){
+  return DIOV(x,y)
+    + `<path d="M ${x+13} ${y-9} l 10 -10 M ${x+17} ${y-2} l 10 -10" stroke="var(--kapton)" stroke-width="1.6" fill="none"/>`
+    + `<path d="M ${x+23} ${y-19} l -4.5 0.5 M ${x+23} ${y-19} l 0.5 4.5" stroke="var(--kapton)" stroke-width="1.6" fill="none"/>`
+    + `<path d="M ${x+27} ${y-12} l -4.5 0.5 M ${x+27} ${y-12} l 0.5 4.5" stroke="var(--kapton)" stroke-width="1.6" fill="none"/>`;
+}
+/* N-channel enhancement MOSFET, drain up. Terminals: drain (x,y-30),
+   source (x,y+30), gate (x-30,y). The bulk arrow points into the channel and
+   ties to the source, which is what makes it an N channel rather than a P.  */
+function NFET(x,y){
+  return W([[x-30,y],[x-14,y]])                              /* gate lead   */
+       + W([[x-14,y-18],[x-14,y+18]])                        /* gate plate  */
+       + W([[x-6,y-18],[x-6,y-9]])                           /* channel     */
+       + W([[x-6,y-4],[x-6,y+4]])
+       + W([[x-6,y+9],[x-6,y+18]])
+       + W([[x-6,y-14],[x,y-14]]) + W([[x,y-14],[x,y-30]])   /* drain       */
+       + W([[x-6,y+14],[x,y+14]]) + W([[x,y+14],[x,y+30]])   /* source      */
+       + W([[x-6,y],[x,y]]) + W([[x,y],[x,y+14]])            /* bulk to src */
+       + `<polygon points="${x-6},${y} ${x+3},${y-5} ${x+3},${y+5}" fill="var(--ink)"/>`;
+}
+
+/* switch, terminals (x-16,y) and (x+16,y) */
+function SWH(x,y,label){
+  return W([[x-16,y],[x-6,y]]) + W([[x-6,y],[x+9,y-12]]) + W([[x+6,y],[x+16,y]])
+       + DOT(x-6,y) + DOT(x+6,y) + TX(x,y+19,label);
+}
+function ARROW(x1,y1,x2,y2,label,color){
+  const c = color||"var(--esd)";
+  const a = Math.atan2(y2-y1,x2-x1), h = 6;
+  const p = `${x2},${y2} ${x2-h*Math.cos(a-0.4)},${y2-h*Math.sin(a-0.4)} ${x2-h*Math.cos(a+0.4)},${y2-h*Math.sin(a+0.4)}`;
+  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="1.5"/>`
+       + `<polygon points="${p}" fill="${c}"/>`
+       + (label?TX((x1+x2)/2,(y1+y2)/2-6,label,"middle",c,11):"");
+}
+function SVG(body, w, h){
+  return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg"
+    style="width:100%;max-width:${w}px;height:auto;display:block;margin:0 auto 4px">${body}</svg>`;
+}
+const vv = (raw,k,d)=> (raw && String(raw[k]||"").trim()) ? String(raw[k]).trim() : (d||"");
+/* a computed result, so the drawing can label what the calculator worked out */
+const got = (out,label)=>{
+  const r = (out||[]).find(x=>x.label===label);
+  if(!r) return "";
+  if(typeof r.value === "number") return siFmt(r.value, r.unit);
+  /* a row may carry no value at all and put its answer in the note - "Nearest
+     AWG" does exactly that - and String(null) would letter the word "null"
+     across the drawing, which is how it read until now                     */
+  if(r.value === null || r.value === undefined) return String(r.note || "");
+  return String(r.value);
+};
+/* the same, for a caption that reads as an equation: a dash stands in when
+   there is no answer yet, so "P = V × I =" is never left hanging          */
+const gotv = (out,label)=> got(out,label) || "—";
+
+const DIAGRAMS = {
+
+ohm: (r,o) => SVG(
+  BATTV(70,95, vv(r,"V", got(o,"Voltage"))) +
+  W([[70,90],[70,45],[300,45]]) + W([[70,100],[70,145],[300,145]]) +
+  W([[300,45],[300,76]]) + RESV(300,95,"R",vv(r,"R",got(o,"Resistance"))) + W([[300,114],[300,145]]) +
+  ARROW(150,45,215,45, vv(r,"I", got(o,"Current"))) +
+  TX(185,120,"P = V \u00d7 I = "+gotv(o,"Power"),"middle","var(--ink3)",11), 380, 175),
+
+divider: (r,o) => SVG(
+  W([[120,28],[120,65]]) + NODE(120,20,"Vin") + VAL(152,24,vv(r,"Vin",""),"start") +
+  RESV(120,84,"R1",vv(r,"R1","")) +
+  W([[120,103],[120,127]]) + DOT(120,115) +
+  W([[120,115],[248,115]]) + NODE(288,111,"Vout") + VAL(288,128, got(o,"Output")||got(o,"Output with E24")) +
+  RESV(120,146,"R2",vv(r,"R2", got(o,"Nearest E24"))) +
+  W([[120,165],[120,178]]) + GND(120,178), 380, 208),
+
+led: (r,o) => SVG(
+  W([[120,32],[120,65]]) + NODE(120,24,"Vs") + VAL(152,28,vv(r,"Vs",""),"start") +
+  RESV(120,84,"R", got(o,"Nearest E24") || got(o,"Resistor")) +
+  W([[120,103],[120,132]]) +
+  LEDV(120,140) + VAL(166,144,vv(r,"Vf","Vf")+" @ "+vv(r,"If","If"),"start") +
+  W([[120,148],[120,166]]) + GND(120,166), 380, 200),
+
+rc: (r,o) => SVG(
+  W([[36,70],[81,70]]) + NODE(36,60,"in") +
+  RESH(100,70,"R",vv(r,"R","")) +
+  W([[119,70],[262,70]]) + DOT(200,70) + NODE(300,66,"out") +
+  W([[200,70],[200,101]]) + CAPV(200,105,"C",vv(r,"C","")) + W([[200,109],[200,134]]) + GND(200,134) +
+  TX(140,158,"fc = 1 / 2\u03c0RC = "+gotv(o,"Cut-off \u22123 dB"),"middle","var(--ink3)",11), 380, 178),
+
+lc: (r,o) => SVG(
+  W([[60,105],[90,105]]) + DOT(90,105) + W([[310,105],[340,105]]) + DOT(310,105) +
+  W([[90,105],[90,55]]) + W([[90,55],[152,55]]) + INDH(176,55,"L",vv(r,"L","")) + W([[200,55],[310,55]]) +
+  W([[310,55],[310,105]]) +
+  W([[90,105],[90,155]]) + W([[90,155],[192,155]]) + CAPH(196,155,"C",vv(r,"C","")) +
+  W([[200,155],[310,155]]) + W([[310,155],[310,105]]) +
+  TX(200,26,"f0 = 1 / 2\u03c0\u221a(LC) = "+gotv(o,"Resonant frequency"),"middle","var(--ink3)",11), 400, 200),
+
+opinv: (r,o) => SVG(
+  W([[20,95],[71,95]]) + NODE(20,86,"Vin") +
+  RESH(90,95,"Rin",vv(r,"Rin","")) + W([[109,95],[180,95]]) + DOT(145,95) +
+  W([[145,95],[145,45]]) + W([[145,45],[211,45]]) +
+  RESH(230,45,"Rf",vv(r,"Rf","")) + W([[249,45],[290,45]]) + W([[290,45],[290,110]]) +
+  OPAMP(180,110) + W([[232,110],[330,110]]) + DOT(290,110) + NODE(368,114,"out","end") +
+  W([[180,125],[150,125]]) + W([[150,125],[150,152]]) + GND(150,152) +
+  TX(250,178,"G = \u2212Rf / Rin = "+gotv(o,"Gain"),"middle","var(--ink3)",11), 400, 195),
+
+opnon: (r,o) => SVG(
+  W([[20,125],[180,125]]) + NODE(20,116,"Vin") +
+  OPAMP(180,110) + W([[232,110],[330,110]]) + DOT(290,110) + NODE(368,114,"out","end") +
+  W([[180,95],[145,95]]) + DOT(145,95) +
+  W([[145,95],[145,45]]) + W([[145,45],[211,45]]) +
+  RESH(230,45,"Rf",vv(r,"Rf","")) + W([[249,45],[290,45]]) + W([[290,45],[290,110]]) +
+  W([[145,95],[145,141]]) + RESV(145,160,"Rg",vv(r,"Rg","")) +
+  W([[145,179],[145,192]]) + GND(145,192) +
+  TX(268,150,"G = 1 + Rf / Rg = "+gotv(o,"Gain"),"middle","var(--ink3)",11), 400, 218),
+
+opdiff: (r,o) => SVG(
+  W([[16,85],[61,85]]) + NODE(16,76,"V1") +
+  RESH(80,85,"R1",vv(r,"R1","")) + W([[99,85],[170,85]]) + DOT(135,85) +
+  W([[135,85],[135,36]]) + W([[135,36],[206,36]]) +
+  RESH(225,36,"R2",vv(r,"R2","")) + W([[244,36],[310,36]]) + W([[310,36],[310,110]]) +
+  W([[16,135],[61,135]]) + NODE(16,126,"V2") +
+  RESH(80,135,"R1",vv(r,"R1","")) + W([[99,135],[170,135]]) + DOT(135,135) +
+  W([[135,135],[135,171]]) + RESV(135,190,"R2",vv(r,"R2","")) +
+  W([[135,209],[135,222]]) + GND(135,222) +
+  OPAMP(170,110,50) + W([[257,110],[350,110]]) + DOT(310,110) + NODE(388,114,"out","end") +
+  TX(250,160,"Vout = R2/R1 \u00d7 (V2 \u2212 V1)","middle","var(--ink3)",11) +
+  TX(250,176,got(o,"Output"),"middle","var(--kapton)",11.5), 400, 250),
+
+reg: (r,o) => SVG(
+  W([[24,60],[90,60]]) + NODE(24,50,"IN") +
+  BOX(90,36,110,48,"REG","") + VAL(96,26,"Vref "+vv(r,"Vref",""),"start") +
+  W([[200,60],[330,60]]) + DOT(280,60) + NODE(368,64,"OUT","end") + VAL(330,44, got(o,"Output")) +
+  W([[280,60],[280,87]]) + RESV(280,106,"Rtop",vv(r,"Rtop","")) +
+  W([[280,125],[280,146]]) + DOT(280,146) +
+  W([[145,84],[145,146]]) + W([[145,146],[280,146]]) + TX(158,142,"FB","start","var(--esd)",11) +
+  W([[280,146],[280,165]]) + RESV(280,184,"Rbot",vv(r,"Rbot","")) +
+  W([[280,203],[280,216]]) + GND(280,216) +
+  TX(150,206,"Vout = Vref (1 + Rbot/Rtop)","middle","var(--ink3)",11), 400, 244),
+
+ldo: (r,o) => SVG(
+  W([[20,70],[100,70]]) + NODE(20,60,"Vin") + VAL(58,60,vv(r,"Vin",""),"middle") +
+  BOX(100,44,120,52,"LINEAR REG","") +
+  W([[220,70],[312,70]]) + NODE(350,74,"Vout","end") + VAL(268,60,vv(r,"Vout",""),"middle") +
+  ARROW(240,98,300,98, vv(r,"Iout","Iout")) +
+  `<path d="M 128 120 q 8 -12 16 0 q 8 12 16 0 M 128 136 q 8 -12 16 0 q 8 12 16 0" stroke="var(--alert)" stroke-width="1.6" fill="none"/>` +
+  TX(172,132,"heat "+got(o,"Dissipation"),"start","var(--alert)",11.5) +
+  TX(150,168,"Tj = Ta + Pd \u00d7 \u03b8JA","middle","var(--ink3)",11) +
+  TX(300,168,got(o,"Junction temperature"),"middle","var(--kapton)",11.5), 400, 185),
+
+buck: (r,o) => SVG(
+  W([[20,50],[104,50]]) + NODE(20,40,"Vin") + VAL(60,40,vv(r,"Vin",""),"middle") +
+  SWH(120,50,"switch") + W([[136,50],[180,50]]) + DOT(180,50) +
+  W([[180,50],[212,50]]) + INDH(236,50,"L",vv(r,"L","")) + W([[260,50],[330,50]]) +
+  DOT(300,50) + NODE(368,54,"Vout","end") + VAL(330,36,vv(r,"Vout",""),"middle") +
+  W([[180,50],[180,92]]) + DIOV_UP(180,100) + W([[180,108],[180,142]]) +
+  W([[300,50],[300,96]]) + CAPV(300,100,"Cout",vv(r,"Cout","")) + W([[300,104],[300,142]]) +
+  W([[60,50],[60,142]]) + W([[60,142],[300,142]]) + GND(180,142) +
+  TX(220,182,"D = Vout / Vin = "+gotv(o,"Duty cycle"),"middle","var(--ink3)",11), 400, 196),
+
+boost: (r,o) => SVG(
+  W([[20,50],[62,50]]) + NODE(20,40,"Vin") + VAL(48,36,vv(r,"Vin",""),"middle") +
+  INDH(110,50,"L",vv(r,"L","")) + W([[134,50],[180,50]]) + DOT(180,50) +
+  W([[180,50],[224,50]]) + DIOH(232,50) + W([[240,50],[330,50]]) +
+  DOT(300,50) + NODE(368,54,"Vout","end") + VAL(330,36,vv(r,"Vout",""),"middle") +
+  W([[180,50],[180,66]]) + NFET(180,96) + W([[180,126],[180,142]]) +
+  TX(146,100,"gate","end","var(--esd)",11) +
+  TX(196,84,vv(r,"f","")+" Hz","start","var(--ink3)",10) +
+  W([[300,50],[300,96]]) + CAPV(300,100,"Cout",vv(r,"Cout","")) + W([[300,104],[300,142]]) +
+  W([[62,50],[62,142]]) + W([[62,142],[300,142]]) + GND(180,142) +
+  TX(220,182,"D = 1 \u2212 Vin / Vout = "+gotv(o,"Duty cycle"),"middle","var(--ink3)",11), 400, 196),
+
+shunt: (r,o) => SVG(
+  ARROW(16,50,72,50, vv(r,"I","I")) + W([[72,50],[81,50]]) +
+  RESH(100,50,"Rshunt",vv(r,"Rs","")) + W([[119,50],[180,50]]) +
+  W([[75,50],[75,96]]) + W([[75,96],[150,96]]) + DOT(75,50) +
+  W([[128,50],[128,110]]) + W([[128,110],[150,110]]) + DOT(128,50) +
+  BOX(150,80,74,46,"AMP","\u00d7"+vv(r,"G","G")) +
+  W([[224,103],[266,103]]) + VAL(245,96, got(o,"Amplifier output")) +
+  BOX(266,80,88,46,"ADC",vv(r,"bits","")+" bit") +
+  TX(310,68,"Vref "+vv(r,"Vref",""),"middle","var(--kapton)",11) +
+  TX(150,158,"Vsense "+got(o,"Shunt voltage")+" \u00b7 full scale "+got(o,"Full scale current"),"middle","var(--ink3)",11), 400, 178),
+
+trace: (r,o) => SVG(
+  `<rect x="60" y="98" width="300" height="46" fill="var(--rule2)" stroke="var(--ink)" stroke-width="${SW}"/>` +
+  TX(210,128,"FR-4","middle","var(--ink3)",11) +
+  `<rect x="150" y="76" width="120" height="22" fill="var(--kapton-soft)" stroke="var(--kapton)" stroke-width="2"/>` +
+  TX(210,92,"copper","middle","var(--kapton)",11) +
+  ARROW(210,62,150,62,"") + ARROW(210,62,270,62,"") +
+  TX(210,52, got(o,"External layer") || "width","middle","var(--kapton)",12) +
+  W([[276,76],[300,76]]) + W([[276,98],[300,98]]) + ARROW(294,76,294,98,"") +
+  TX(308,91,vv(r,"oz","1")+" oz","start","var(--kapton)",11) +
+  ARROW(110,76,110,42,"") + TX(102,38,"\u0394T "+vv(r,"dT","")+" \u00b0C","end","var(--alert)",11) +
+  TX(210,170,"IPC-2221 \u00b7 an internal layer needs "+(got(o,"Internal layer")||"more"),"middle","var(--ink3)",11), 400, 185),
+
+batt: (r,o) => SVG(
+  BATTV(90,90, vv(r,"cap","")+" Ah") +
+  W([[90,85],[90,40]]) + W([[90,40],[290,40]]) +
+  W([[90,95],[90,142]]) + W([[90,142],[290,142]]) +
+  BOX(250,66,80,48,"LOAD","") + W([[290,40],[290,66]]) + W([[290,114],[290,142]]) +
+  ARROW(150,40,220,40, vv(r,"I","I")) +
+  TX(190,172,"runtime "+got(o,"Runtime"),"middle","var(--ink3)",11), 400, 190)
+};
+
+/* ----------------------------------------------------- component decoding -
+   Colour bands, SMD codes and the E-series behind them.                     */
+const BAND_COLORS = {
+  black:"#1A1A1A", brown:"#7B4A2B", red:"#C0392B", orange:"#E07B20", yellow:"#F0C419",
+  green:"#2C7A50", blue:"#2F6F8F", violet:"#7B4B9E", grey:"#8D939C", white:"#F2F2F2",
+  gold:"#C9A227", silver:"#B8BCC0", none:"#00000000"
+};
+const DIGITS = ["black","brown","red","orange","yellow","green","blue","violet","grey","white"];
+const MULTS  = {black:1, brown:10, red:100, orange:1e3, yellow:1e4, green:1e5, blue:1e6,
+                violet:1e7, grey:1e8, white:1e9, gold:0.1, silver:0.01};
+const TOLS   = {brown:1, red:2, green:0.5, blue:0.25, violet:0.1, grey:0.05, gold:5, silver:10, none:20};
+const TCS    = {brown:100, red:50, orange:15, yellow:25, blue:10, violet:5, none:0};
+const MULT_ORDER = ["black","brown","red","orange","yellow","green","blue","violet","grey","white","gold","silver"];
+const TOL_ORDER  = ["gold","silver","brown","red","green","blue","violet","grey","none"];
+const TC_ORDER   = ["none","brown","red","orange","yellow","blue","violet"];
+
+/* value -> the bands that would be printed on the part */
+function valueToBands(x, nBands){
+  if(!isFinite(x) || x<=0) return null;
+  const n = nBands===4 ? 2 : 3;
+  let exp = Math.floor(Math.log10(x)) - (n-1);
+  let mant = Math.round(x / Math.pow(10, exp));
+  if(String(mant).length > n){ mant = Math.round(mant/10); exp++; }
+  const digits = String(mant).padStart(n,"0").split("").map(d=>DIGITS[+d]);
+  let mult = MULT_ORDER.find(k=>Math.abs(MULTS[k]-Math.pow(10,exp)) < Math.pow(10,exp)*1e-9);
+  if(!mult) return null;
+  return {digits, mult, value: mant*Math.pow(10,exp)};
+}
+
+/* EIA-96 mantissa table: the E96 series, in order */
+const EIA96 = [100,102,105,107,110,113,115,118,121,124,127,130,133,137,140,143,147,150,154,158,
+ 162,165,169,174,178,182,187,191,196,200,205,210,215,221,226,232,237,243,249,255,261,267,274,280,
+ 287,294,301,309,316,324,332,340,348,357,365,374,383,392,402,412,422,432,442,453,464,475,487,499,
+ 511,523,536,549,562,576,590,604,619,634,649,665,681,698,715,732,750,768,787,806,825,845,866,887,
+ 909,931,953,976];
+const EIA96_MULT = {Z:1e-3, Y:1e-2, R:1e-2, X:1e-1, S:1e-1, A:1, B:10, H:10, C:100, D:1e3, E:1e4, F:1e5};
+
+function decodeSMD(code){
+  const t = String(code||"").trim().toUpperCase().replace(/\s/g,"");
+  if(!t) return null;
+  /* EIA-96: two digits then a multiplier letter */
+  let m = /^(\d{2})([ZYRXSABHCDEF])$/.exec(t);
+  if(m){
+    const idx = parseInt(m[1],10);
+    if(idx>=1 && idx<=96) return {v: EIA96[idx-1] * EIA96_MULT[m[2]], how:"EIA-96, 1 % part"};
+  }
+  /* R notation: 4R7, R47, 10R */
+  if(/^[\dR]+$/.test(t) && t.indexOf("R")>=0){
+    const n = parseFloat(t.replace("R","."));
+    if(isFinite(n)) return {v:n, how:"R marks the decimal point"};
+  }
+  /* 3 digit: last digit is the number of zeros */
+  if(/^\d{3}$/.test(t)) return {v: parseInt(t.slice(0,2),10) * Math.pow(10, +t[2]), how:"3 digit, 5 % part"};
+  /* 4 digit: last digit is the number of zeros */
+  if(/^\d{4}$/.test(t)) return {v: parseInt(t.slice(0,3),10) * Math.pow(10, +t[3]), how:"4 digit, 1 % part"};
+  return null;
+}
+function encodeSMD(x){
+  if(!isFinite(x) || x<=0) return {};
+  const out = {};
+  /* 3 digit */
+  let e3 = Math.floor(Math.log10(x)) - 1;
+  if(e3 >= 0 && e3 <= 9){
+    const m3 = Math.round(x/Math.pow(10,e3));
+    if(m3>=10 && m3<=99) out.d3 = String(m3)+String(e3);
+  }
+  if(x < 100){
+    /* under 100 ohm the marking uses R for the decimal point: 4R7, R47, 10R */
+    const t = (x<10 ? x.toFixed(x<1?2:1) : x.toFixed(1)).replace(/\.?0+$/,"");
+    out.d3 = (t.indexOf(".")>=0 ? t.replace(".","R") : t+"R").replace(/^0R/,"R");
+  }
+  /* 4 digit */
+  let e4 = Math.floor(Math.log10(x)) - 2;
+  if(e4 >= 0 && e4 <= 9){
+    const m4 = Math.round(x/Math.pow(10,e4));
+    if(m4>=100 && m4<=999) out.d4 = String(m4)+String(e4);
+  }
+  /* EIA-96 */
+  const dec = Math.floor(Math.log10(x));
+  const mant = x/Math.pow(10,dec)*100;
+  let bi = 0, bd = Infinity;
+  EIA96.forEach((v,i)=>{ const d=Math.abs(v-mant); if(d<bd){bd=d; bi=i;} });
+  const mult = Math.pow(10, dec-2);
+  const letter = Object.keys(EIA96_MULT).find(k=>Math.abs(EIA96_MULT[k]-mult) < mult*1e-9);
+  if(letter) out.e96 = String(bi+1).padStart(2,"0") + letter;
+  return out;
+}
+function parseList(t){
+  return String(t||"").split(/[,;\s]+/).map(x=>parseSI(x)).filter(x=>isFinite(x) && x!==0);
+}
+
+const NEW_CALCS = [
+
+{id:"rcolor", group:"Components", name:"Resistor colour code",
+ note:"Read the bands off the part, or type a value to see which bands it should have.",
+ fields:[FS("n","Bands",["4","5","6"],"4"),
+         FS("b1","Band 1",DIGITS,"brown"), FS("b2","Band 2",DIGITS,"black"),
+         FS("b3","Band 3 (5 and 6 band)",DIGITS,"black"),
+         FS("mul","Multiplier",MULT_ORDER,"red"),
+         FS("tol","Tolerance",TOL_ORDER,"gold"),
+         FS("tc","Temp. coefficient (6 band)",TC_ORDER,"none"),
+         FT("val","Or type a value instead","10k")],
+ run(v){
+   const n = parseInt(v.n,10);
+   if(v.val){
+     const x = parseSI(v.val);
+     const b = valueToBands(x, n===4?4:5);
+     if(!b) return [R("Bands","\u2014","","that value has no standard band pattern")];
+     return [R("Value",b.value,"\u03a9"),
+             R("Bands", b.digits.join(" \u00b7 ")+" \u00b7 "+b.mult+" \u00b7 "+v.tol,""),
+             R("Tolerance","\u00b1"+TOLS[v.tol],"%"),
+             R("Range", null,"", "from "+siFmt(b.value*(1-TOLS[v.tol]/100),"\u03a9")+
+                                " to "+siFmt(b.value*(1+TOLS[v.tol]/100),"\u03a9"))];
+   }
+   const d = n===4 ? [v.b1,v.b2] : [v.b1,v.b2,v.b3];
+   const mant = d.reduce((a,c)=>a*10 + DIGITS.indexOf(c), 0);
+   const val  = mant * MULTS[v.mul];
+   const tol  = TOLS[v.tol];
+   const out = [RP("Value",val,"\u03a9"),R("Tolerance","\u00b1"+tol,"%"),
+                R("Lowest",val*(1-tol/100),"\u03a9"),R("Highest",val*(1+tol/100),"\u03a9")];
+   if(n===6 && TCS[v.tc]) out.push(R("Temp. coefficient",TCS[v.tc],"ppm/K"));
+   const e = nearestE24(val);
+   if(Math.abs(e-val) > val*0.01) out.push(R("Nearest E24",e,"\u03a9","this pattern is not an E24 value"));
+   return out;
+ }},
+
+{id:"smd", group:"Components", name:"SMD resistor code",
+ note:"Type the marking on the part, or a value to get every marking it could carry.",
+ fields:[FT("code","Marking","103  1002  4R7  01A"), FT("val","Or a value","10k")],
+ run(v){
+   if(v.code){
+     const d = decodeSMD(v.code);
+     if(!d) return [R("Value","\u2014","","that marking is not one of the standard formats")];
+     const alt = encodeSMD(d.v);
+     return [RP("Value",d.v,"\u03a9"),R("Format",d.how,""),
+             R("Also written as", null,"",
+               [alt.d3&&("3 digit "+alt.d3), alt.d4&&("4 digit "+alt.d4), alt.e96&&("EIA-96 "+alt.e96)]
+                 .filter(Boolean).join("  \u00b7  "))];
+   }
+   const x = parseSI(v.val);
+   if(!isFinite(x) || x<=0) return null;
+   const a = encodeSMD(x);
+   return [R("3 digit, 5 %",a.d3||"\u2014",""),R("4 digit, 1 %",a.d4||"\u2014",""),
+           R("EIA-96",a.e96||"\u2014",""),
+           R("Value back out", a.e96 ? (decodeSMD(a.e96)||{}).v : x, "\u03a9","what the EIA-96 code really means")];
+ }},
+
+{id:"netcombo", group:"Components", name:"Series & parallel",
+ note:"List the parts you have, separated by commas. Resistors and inductors add in series; capacitors add in parallel.",
+ fields:[FS("type","Component",["Resistors","Capacitors","Inductors"],"Resistors"),
+         FT("list","Values","10k, 22k, 4k7")],
+ run(v){
+   const xs = parseList(v.list);
+   if(!xs.length) return null;
+   const sum = xs.reduce((a,b)=>a+b,0);
+   const inv = xs.reduce((a,b)=>a + 1/b, 0);
+   const cap = v.type==="Capacitors";
+   const u = cap ? "F" : v.type==="Inductors" ? "H" : "\u03a9";
+   const series   = cap ? 1/inv : sum;
+   const parallel = cap ? sum : 1/inv;
+   const out = [R("In series",series,u),R("In parallel",parallel,u),
+                R("Parts",xs.length,""),
+                R("Largest",Math.max.apply(null,xs),u),R("Smallest",Math.min.apply(null,xs),u)];
+   if(!cap && xs.length===2) out.push(R("Divider ratio", xs[1]/(xs[0]+xs[1]), "\u00d7","if these two form a divider"));
+   return out;
+ }},
+
+{id:"react", group:"Components", name:"Reactance Xc and XL",
+ note:"What a capacitor or an inductor looks like at one frequency.",
+ fields:[F("f","Frequency","Hz","1k"),F("C","Capacitance","F","100n"),F("L","Inductance","H","10u"),
+         F("Rs","Series resistance (optional)","Ω","0.5")],
+ run(v){
+   const {f,C,L,Rs} = v;
+   if(!isFinite(f) || f<=0) return null;
+   const out = [];
+   let xc = null, xl = null;
+   if(isFinite(C) && C>0){ xc = 1/(2*Math.PI*f*C); out.push(R("Xc",xc,"\u03a9","capacitor")); }
+   if(isFinite(L) && L>0){ xl = 2*Math.PI*f*L;     out.push(R("XL",xl,"\u03a9","inductor")); }
+   if(xc!==null && xl!==null){
+     const x = xl - xc;
+     out.push(R("Net reactance",x,"\u03a9", x>0?"inductive":"capacitive"));
+     const r = isFinite(Rs)&&Rs>0 ? Rs : 0;
+     out.push(R("Impedance",Math.sqrt(r*r + x*x),"\u03a9"));
+     out.push(R("Phase",Math.atan2(x, r||1e-12)*180/Math.PI,"\u00b0","voltage against current"));
+     out.push(R("Resonates at",1/(2*Math.PI*Math.sqrt(L*C)),"Hz"));
+   } else if(xc!==null && isFinite(Rs) && Rs>0){
+     out.push(R("Impedance",Math.sqrt(Rs*Rs+xc*xc),"\u03a9"));
+   }
+   return out.length?out:null;
+ }},
+
+{id:"zener", group:"Power", name:"Zener shunt regulator",
+ note:"Rs feeds both the zener and the load. The zener has to swallow whatever the load does not take.",
+ fields:[F("Vin","Input","V","12"),F("Vz","Zener voltage","V","5.1"),F("Rs","Series resistor","Ω","220"),
+         F("Il","Load current","A","10m"),F("Pz","Zener power rating","W","0.5")],
+ run(v){
+   const {Vin,Vz,Rs,Il,Pz} = v;
+   if(!isFinite(Vin)||!isFinite(Vz)) return null;
+   if(Vz>=Vin) return [R("Zener","\u2014","","the input has to sit above the zener voltage")];
+   if(!isFinite(Rs)){
+     if(!isFinite(Il)) return null;
+     /* size Rs so the zener still gets a holding current of 5 mA at full load */
+     const r = (Vin-Vz)/(Il+0.005), e = nearestE24(r);
+     return [R("Rs needed",r,"\u03a9","keeps 5 mA in the zener at full load"),
+             RP("Nearest E24",e,"\u03a9"),R("Total current",(Vin-Vz)/e,"A"),
+             R("Dissipation in Rs",(Vin-Vz)*(Vin-Vz)/e,"W")];
+   }
+   const It = (Vin-Vz)/Rs;
+   const il = isFinite(Il) ? Il : 0;
+   const iz = It - il;
+   const pz = iz*Vz, prs = It*It*Rs;
+   const out = [R("Total current through Rs",It,"A"),
+                R("Current in the zener",iz,"A", iz<0.005 ? "below 5 mA, regulation gets loose" : ""),
+                R("Zener dissipation",pz,"W"),
+                R("Rs dissipation",prs,"W","pick a resistor rated at least twice this"),
+                R("Efficiency",100*Vz*il/(Vin*It),"%")];
+   if(iz<0) out.push(R("Warning",null,"","the load takes more than Rs delivers \u2014 the output will sag below "+siFmt(Vz,"V")));
+   if(isFinite(Pz)){
+     out.push(R("Zener rating used",100*pz/Pz,"%", pz>Pz?"over the rating":""));
+     out.push(R("Worst case, no load",(Vin-Vz)/Rs*Vz,"W","what the zener sees if the load disconnects"));
+   }
+   return out;
+ }}
+];
+
+
+/* ---- diagrams for the component and zener calculators -------------------- */
+/* a resistor body with the bands actually painted on it */
+function BANDED(x,y,bands,tolBand,tcBand){
+  const bw=110, bh=42;
+  let g = `<rect x="${x-bw/2}" y="${y-bh/2}" width="${bw}" height="${bh}" rx="14"
+             fill="#E6DCC8" stroke="var(--ink)" stroke-width="${SW}"/>`
+        + W([[x-bw/2-34,y],[x-bw/2,y]]) + W([[x+bw/2,y],[x+bw/2+34,y]]);
+  const all = bands.concat(tolBand?[tolBand]:[]).concat(tcBand?[tcBand]:[]);
+  const n = all.length;
+  all.forEach((c,i)=>{
+    /* the tolerance band sits apart, at the right hand end */
+    const isTail = (tolBand && i>=bands.length);
+    const step = (bw-30)/Math.max(1,n);
+    const px = isTail ? x + bw/2 - 12 - ((n-1-i)*13) : x - bw/2 + 16 + i*step;
+    g += `<rect x="${px-5}" y="${y-bh/2+1}" width="10" height="${bh-2}"
+            fill="${BAND_COLORS[c]||"#999"}" stroke="var(--ink3)" stroke-width="0.6"/>`;
+  });
+  return g;
+}
+
+DIAGRAMS.rcolor = (r,o) => {
+  const n = parseInt(r.n||"4",10);
+  let bands, tol = r.tol||"gold", tc = (n===6 ? (r.tc||"none") : null);
+  const typed = String(r.val||"").trim();
+  if(typed){
+    const b = valueToBands(parseSI(typed), n===4?4:5);
+    bands = b ? b.digits.concat([b.mult]) : [];
+  } else {
+    bands = (n===4 ? [r.b1||"brown", r.b2||"black"] : [r.b1||"brown", r.b2||"black", r.b3||"black"])
+              .concat([r.mul||"red"]);
+  }
+  if(tc==="none") tc = null;
+  return SVG(
+    BANDED(200,84,bands,tol,tc) +
+    TX(200,26, got(o,"Value")||"", "middle","var(--kapton)",17) +
+    TX(200,46, got(o,"Tolerance")?("\u00b1"+got(o,"Tolerance")):"", "middle","var(--ink2)",11) +
+    TX(200,140, bands.concat(tol?[tol]:[]).concat(tc?[tc]:[]).join(" \u00b7 "), "middle","var(--ink3)",11) +
+    TX(200,158, n+" bands \u00b7 the tolerance band sits apart at the far end","middle","var(--ink3)",10),
+    400, 172);
+};
+
+DIAGRAMS.smd = (r,o) => SVG(
+  `<rect x="120" y="52" width="160" height="76" rx="3" fill="#1A1A1A" stroke="var(--ink)" stroke-width="${SW}"/>` +
+  `<rect x="104" y="60" width="20" height="60" fill="var(--rule)" stroke="var(--ink)" stroke-width="${SW}"/>` +
+  `<rect x="276" y="60" width="20" height="60" fill="var(--rule)" stroke="var(--ink)" stroke-width="${SW}"/>` +
+  TX(200,101, String(r.code||"").trim().toUpperCase() || "\u2014", "middle","#F2F2F2",26) +
+  TX(200,34, got(o,"Value")||"", "middle","var(--kapton)",17) +
+  TX(200,152, got(o,"Format")||"3 digit \u00b7 4 digit \u00b7 R notation \u00b7 EIA-96","middle","var(--ink3)",11),
+  400, 168);
+
+DIAGRAMS.netcombo = (r,o) => {
+  const cap = r.type==="Capacitors", ind = r.type==="Inductors";
+  const part = (x,y,val)=> cap ? CAPH(x,y,"",val) : ind ? INDH(x,y,"",val) : RESH(x,y,"",val);
+  const tw   = cap ? 8 : ind ? 48 : RL;
+  const xs = parseList(r.list).slice(0,3);
+  const vals = xs.length ? xs.map(v=>siFmt(v, cap?"F":ind?"H":"\u03a9")) : ["","",""];
+  const nS = Math.max(1, Math.min(3, xs.length));
+  let g = TX(90,30,"in series","middle","var(--ink2)",11);
+  let px = 110;
+  g += W([[30,64],[px-tw/2,64]]);
+  for(let i=0;i<nS;i++){
+    g += part(px,64,vals[i]);
+    const nx = px + 100;
+    if(i<nS-1) g += W([[px+tw/2,64],[nx-tw/2,64]]);
+    else g += W([[px+tw/2,64],[370,64]]);
+    px = nx;
+  }
+  g += TX(200,44, got(o,"In series")||"", "middle","var(--kapton)",13);
+  g += TX(90,120,"in parallel","middle","var(--ink2)",11);
+  const ys = [150,196,242].slice(0,nS);
+  g += W([[30,150],[70,150]]) + W([[70,150],[70,ys[ys.length-1]]]);
+  g += W([[330,150],[370,150]]) + W([[330,150],[330,ys[ys.length-1]]]);
+  ys.forEach((yy,i)=>{
+    g += W([[70,yy],[200-tw/2,yy]]) + part(200,yy,vals[i]) + W([[200+tw/2,yy],[330,yy]]);
+    g += DOT(70,yy) + DOT(330,yy);
+  });
+  g += TX(200,134, got(o,"In parallel")||"", "middle","var(--kapton)",13);
+  return SVG(g, 400, ys[ys.length-1]+34);
+};
+
+DIAGRAMS.react = (r,o) => SVG(
+  `<path d="M 40 96 q 15 -34 30 0 q 15 34 30 0" fill="none" stroke="var(--esd)" stroke-width="1.8"/>` +
+  TX(70,140, vv(r,"f","f")+" Hz","middle","var(--esd)",11.5) +
+  W([[100,96],[136,96]]) +
+  CAPH(140,96,"C",vv(r,"C","")) + W([[144,96],[188,96]]) +
+  INDH(212,96,"L",vv(r,"L","")) + W([[236,96],[290,96]]) +
+  (isFinite(parseSI(r.Rs)) ? RESH(310,96,"Rs",vv(r,"Rs","")) + W([[329,96],[366,96]]) : W([[290,96],[366,96]])) +
+  TX(140,44, got(o,"Xc")?("Xc "+got(o,"Xc")):"", "middle","var(--kapton)",12) +
+  TX(212,44, got(o,"XL")?("XL "+got(o,"XL")):"", "middle","var(--kapton)",12) +
+  TX(200,164, [got(o,"Impedance")&&("Z "+got(o,"Impedance")),
+               got(o,"Phase")&&("\u2220 "+got(o,"Phase")),
+               got(o,"Resonates at")&&("f0 "+got(o,"Resonates at"))].filter(Boolean).join("  \u00b7  "),
+     "middle","var(--ink3)",11),
+  400, 180);
+
+DIAGRAMS.zener = (r,o) => SVG(
+  W([[24,50],[81,50]]) + NODE(24,40,"Vin") + VAL(56,40,vv(r,"Vin",""),"middle") +
+  RESH(100,50,"Rs",vv(r,"Rs", got(o,"Nearest E24"))) +
+  W([[119,50],[300,50]]) + DOT(200,50) + NODE(336,54,"Vout","end") +
+  ARROW(140,32,182,32, got(o,"Total current through Rs")) +
+  /* reverse biased: cathode bar up to the rail, anode down to ground */
+  W([[200,50],[200,92]]) + ZENER(200,100) + W([[200,108],[200,150]]) + GND(200,150) +
+  VAL(224,96,vv(r,"Vz","Vz"),"start") +
+  TX(224,112, got(o,"Current in the zener"),"start","var(--esd)",11) +
+  W([[300,50],[300,76]]) + BOX(266,76,68,44,"LOAD",vv(r,"Il","")) + W([[300,120],[300,150]]) +
+  W([[200,150],[300,150]]) +
+  TX(200,182,[got(o,"Zener dissipation")&&("zener "+got(o,"Zener dissipation")),
+              got(o,"Rs dissipation")&&("Rs "+got(o,"Rs dissipation"))].filter(Boolean).join("  \u00b7  "),
+     "middle","var(--ink3)",11),
+  400, 194);
+
+
+/* ---------------------------------------------------------- wire and AWG --
+   Resistivity in ohm.mm2/m at 20 degrees.                                   */
+const RHO = {"Copper, pure":0.0172, "Copper, annealed IEC":0.017241, "Aluminium":0.0282,
+             "CCA, 10 % copper":0.0271, "CCA, 15 % copper":0.0263, "Silver":0.0159, "Brass":0.071};
+const DENS = {"Copper, pure":8.96, "Copper, annealed IEC":8.96, "Aluminium":2.70,
+              "CCA, 10 % copper":3.32, "CCA, 15 % copper":3.63, "Silver":10.49, "Brass":8.5};
+/* AWG n -> diameter in mm, the defining geometric series */
+const awgDia = n => 0.127 * Math.pow(92, (36-n)/39);
+const awgArea = n => Math.PI*Math.pow(awgDia(n),2)/4;
+const AWG_NAME = n => n===-3?"4/0":n===-2?"3/0":n===-1?"2/0":n===0?"1/0":String(n);
+/* AWG 24 is 0.511 mm across and 0.205 mm² in section. Quoting the area on its
+   own invites reading it as the diameter - they are the two numbers a gauge
+   is known by, so both are given, and the ⌀ says which is which.          */
+const awgDesc = n => AWG_NAME(n)+"  ·  ⌀"+siFmt(awgDia(n),"mm")+"  ·  "+siFmt(awgArea(n),"mm²");
+/* resistance of a metre of copper at that gauge, from the same figures */
+const awgOhmPerM = n => RHO["Copper, pure"]/awgArea(n);
+
+/* The gauge table, computed rather than copied: every number here comes from
+   the defining series above and from copper's resistivity, so nothing can
+   drift out of step with what the calculators work out. Current ratings are
+   deliberately absent - those depend on insulation, bundling and ambient,
+   and a number invented here would be trusted.                            */
+function awgTableHTML(){
+  const rows = [];
+  for(let n=-3;n<=30;n++) rows.push(n);
+  const cell = n => `<tr><td class="m"><b>${AWG_NAME(n)}</b></td>
+      <td class="num m">${awgDia(n).toFixed(n<10?3:n<20?3:4)}</td>
+      <td class="num m">${awgArea(n) >= 1 ? awgArea(n).toFixed(2) : awgArea(n).toFixed(4)}</td>
+      <td class="num m">${siFmt(awgOhmPerM(n),"Ω")}</td></tr>`;
+  const half = Math.ceil(rows.length/2);
+  const table = list => `<table style="width:100%"><thead><tr><th>AWG</th>
+      <th class="num">⌀ mm</th><th class="num">mm²</th><th class="num">Ω/m</th></tr></thead>
+      <tbody>${list.map(cell).join("")}</tbody></table>`;
+  return `<h2>American wire gauge</h2>
+    <p>Diameter and section from the defining series — a gauge is quoted by both, and they are easy to
+       confuse: <b>AWG 24</b> is <b>0.511 mm</b> across and <b>0.205 mm²</b> in section. Ω/m is solid
+       copper at 20 °C; a run of cable is twice its length, out and back.</p>
+    <p style="color:var(--ink3);font-size:12px">No current rating is given. That depends on the
+       insulation, on whether the cable is bundled or in free air, and on the ambient — a single number
+       here would be believed and would sometimes be wrong.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0 22px;margin-top:10px">
+      ${table(rows.slice(0,half))}${table(rows.slice(half))}</div>`;
+}
+function awgFor(areaMM2){
+  let best = null, bd = Infinity;
+  for(let n=-3;n<=30;n++){
+    const a = awgArea(n);
+    if(a >= areaMM2 && (a-areaMM2) < bd){ bd = a-areaMM2; best = n; }
+  }
+  return best===null ? -3 : best;   /* smallest gauge that still carries it */
+}
+
+const WIRE_CALCS = [
+
+{id:"wire", group:"Wire", name:"Wire resistance from diameter",
+ note:"R = \u03c1L/A with A = \u03c0D\u00b2/4. Using the diameter directly instead of the area is a common error \u2014 it drops the square and understates the resistance badly on thin wire.",
+ fields:[F("L","Length","m","100"),F("D","Conductor diameter","mm","0.2"),
+         FS("mat","Material",Object.keys(RHO),"Copper, pure"),
+         F("Rm","Measured resistance (optional)","Ω","")],
+ run(v){
+   const {L,D,mat,Rm} = v;
+   if(!isFinite(L)||!isFinite(D)||L<=0||D<=0) return null;
+   const A = Math.PI*D*D/4;                       /* mm2 */
+   const rho = RHO[mat] || RHO["Copper, pure"];
+   const Rw = rho*L/A;                             /* not R - that is the row builder */
+   const wrong = L/D*rho;                          /* the formula going round the internet */
+   const out = [R("Cross section",A,"mm\u00b2"),
+                R("Resistance",Rw,"\u03a9"),
+                R("Per metre",Rw/L,"\u03a9","\u03a9/m"),
+                R("Mass",(DENS[mat]||8.96)*A*L/1000,"kg","the whole length"),
+                R("Nearest AWG",null,"", awgDesc(awgFor(A))),
+                R("The (L/D) \u00d7 \u03c1 formula gives",wrong,"\u03a9",
+                  "wrong by "+(Rw/wrong).toFixed(2)+"\u00d7 \u2014 it treats a diameter as an area")];
+   if(isFinite(Rm) && Rm>0){
+     const ratio = Rm/Rw;
+     out.push(R("Measured \u00f7 expected",ratio,"\u00d7"));
+     out.push(R("Verdict",null,"",
+       ratio < 1.12 ? "consistent with solid copper"
+       : ratio < 1.35 ? "high \u2014 check the length and the diameter before blaming the metal"
+       : "far too high for copper \u2014 aluminium or CCA behaves like this"));
+     out.push(R("Implied resistivity",Rm*A/L,"","\u03a9\u00b7mm\u00b2/m \u00b7 copper is 0.0172, aluminium 0.0282"));
+   }
+   return out;
+ }},
+
+{id:"cable", group:"Wire", name:"Cable size & voltage drop",
+ note:"Sizing a run for a current and an acceptable drop. The length is one way; the calculation uses the round trip. Conductor temperature is asked for rather than assumed — copper gains about 0.39 % per degree, so a loaded cable drops more than a cold one. How hot it actually gets depends on the insulation, on whether the run is bundled or in free air, and on the ambient, so that is yours to say; the watts per metre below are what has to escape.",
+ ref: awgTableHTML,
+ fields:[F("I","Current","A","32"),F("L","One way length","m","15"),F("V","System voltage","V","230"),
+         F("drop","Allowed drop","%","3"),F("A","Or a cross section you already have","mm²",""),
+         F("T","Conductor temperature","°C","70")],
+ run(v){
+   const {I,L,V,drop,A,T} = v;
+   if(!isFinite(I)||!isFinite(L)||I<=0||L<=0) return null;
+   const rho = RHO["Copper, pure"];
+   /* Copper gains about 0.39 % per degree, so a warm cable drops more than a
+      cold one and the sum has to be done at the temperature the conductor
+      actually runs at - which is why it is asked for rather than assumed. */
+   const Tc = isFinite(T) ? T : 20;
+   const kT = 1 + 0.00393*(Tc-20);
+   const out = [];
+   if(isFinite(V)&&isFinite(drop)&&drop>0){
+     const vd = V*drop/100;
+     /* sized at the temperature the conductor runs at, not at 20 \u00b0C - a warm
+        cable is more resistive, so holding the same drop takes more copper,
+        and sizing it cold is how a run ends up marginal in service        */
+     const need = 2*(rho*kT)*L*I/vd;
+     const n = awgFor(need);
+     out.push(R("Allowed drop",vd,"V",drop+" % of "+siFmt(V,"V")),
+              R("Voltage at the load",V-vd,"V","if the cable is sized exactly to that"),
+              R("Cross section needed",need,"mm\u00b2","for "+drop+" % at "+siFmt(V,"V")+
+                (Math.abs(Tc-20)>=1 ? ", conductor at "+siFmt(Tc,"")+" \u00b0C" : "")),
+              R("Nearest AWG",null,"", awgDesc(n)),
+              R("Next metric size",null,"", [1,1.5,2.5,4,6,10,16,25,35,50,70,95].find(x=>x>=need)+" mm\u00b2"));
+   }
+   if(isFinite(A)&&A>0){
+     const Rw = 2*rho*L/A, vd = Rw*I;
+     /* the drop is what the cable takes; the load only ever sees what is
+        left, and that is the number the thing on the end has to work on  */
+     const RwH = Rw*kT, vdH = RwH*I;
+     out.push(R("Loop resistance",Rw,"\u03a9","at 20 \u00b0C"),
+              R("Drop at this current",vd,"V","cold"),
+              R("Drop",isFinite(V)?100*vd/V:null,"%", isFinite(V)&&100*vd/V>3?"over the usual 3 % limit":""));
+     if(isFinite(V)) out.push(R("Voltage at the load",V-vd,"V",
+       V-vd<=0 ? "the cable eats the whole supply \u2014 the run is far too thin"
+               : "what the load actually receives with this cable fitted"));
+     /* at 20 \u00b0C the warm figures are the cold ones again - saying them twice
+        just buries the rows that differ                                    */
+     if(Math.abs(Tc-20) >= 1){
+       out.push(R("Loop resistance at "+siFmt(Tc,"")+" \u00b0C",RwH,"\u03a9","copper climbs about 0.39 % per degree"),
+                R("Drop when warm",vdH,"V","the case that matters \u2014 a loaded cable is not at 20 \u00b0C"));
+       if(isFinite(V)) out.push(R("Voltage at the load when warm",V-vdH,"V"));
+     }
+     out.push(R("Heat in the cable",vdH*I,"W","at "+siFmt(Tc,"")+" \u00b0C"),
+              R("Heat per metre",vdH*I/(2*L),"W","both legs counted \u2014 this is what has to escape"));
+   }
+   return out.length?out:null;
+ }}
+];
+
+const POWER_CALCS = [
+
+{id:"fet", group:"Power", name:"MOSFET losses",
+ note:"Conduction, switching and gate charge. Rds(on) rises with temperature \u2014 the datasheet figure at 25 \u00b0C is optimistic by roughly 1.4\u00d7 at 100 \u00b0C.",
+ fields:[F("Vds","Switched voltage","V","400"),F("Id","Drain current","A","2"),
+         F("D","Duty cycle","%","40"),F("f","Switching frequency","Hz","65k"),
+         F("Rds","Rds(on)","Ω","0.3"),F("tsw","Rise + fall time","s","60n"),
+         F("Qg","Gate charge","C","20n"),F("Vg","Gate drive","V","12"),
+         F("Rja","θJA or θJC + heatsink","°C/W","62"),F("Ta","Ambient","°C","40")],
+ run(v){
+   const {Vds,Id,D,f,Rds,tsw,Qg,Vg,Rja,Ta} = v;
+   if(!isFinite(Id)||!isFinite(Rds)) return null;
+   const d = isFinite(D) ? D/100 : 1;
+   const pc = Id*Id*Rds*d;
+   const out = [R("Conduction loss",pc,"W","Id\u00b2 \u00d7 Rds(on) \u00d7 duty"),
+                R("At 100 \u00b0C junction",pc*1.4,"W","Rds(on) roughly 1.4\u00d7 warmer")];
+   let ps = 0, pg = 0;
+   if(isFinite(Vds)&&isFinite(f)&&isFinite(tsw)){
+     ps = 0.5*Vds*Id*tsw*f;
+     out.push(R("Switching loss",ps,"W","\u00bd \u00d7 Vds \u00d7 Id \u00d7 (tr+tf) \u00d7 f"));
+   }
+   if(isFinite(Qg)&&isFinite(Vg)&&isFinite(f)){
+     pg = Qg*Vg*f;
+     out.push(R("Gate drive loss",pg,"W","paid by the driver, not the FET"));
+   }
+   const tot = pc*1.4 + ps;
+   out.push(R("Total in the FET",tot,"W","hot conduction plus switching"));
+   if(isFinite(Rja)&&isFinite(Ta)){
+     const tj = Ta + tot*Rja;
+     out.push(R("Junction temperature",tj,"\u00b0C",
+       tj>150?"over a typical 150 \u00b0C limit":tj>125?"close to the limit":"within a typical limit"));
+     out.push(R("\u03b8 needed for 125 \u00b0C",(125-Ta)/tot,"\u00b0C/W","total junction to ambient"));
+   }
+   return out;
+ }},
+
+{id:"heatsink", group:"Power", name:"Heatsink selection",
+ note:"The thermal path is a series of resistances: junction to case, case to sink, sink to air. Only the last one is yours to choose.",
+ fields:[F("Pd","Dissipation","W","4.35"),F("Tj","Junction limit","°C","125"),
+         F("Ta","Ambient","°C","40"),F("Rjc","θJC","°C/W","3"),
+         F("Rcs","θCS pad or grease","°C/W","0.5"),F("Rsa","θSA of a sink you have","°C/W","")],
+ run(v){
+   const {Pd,Tj,Ta,Rjc,Rcs,Rsa} = v;
+   if(!isFinite(Pd)||!isFinite(Tj)||!isFinite(Ta)||Pd<=0) return null;
+   const budget = (Tj-Ta)/Pd;
+   const need = budget - (isFinite(Rjc)?Rjc:0) - (isFinite(Rcs)?Rcs:0);
+   const out = [R("Total \u03b8 budget",budget,"\u00b0C/W","(Tj \u2212 Ta) \u00f7 Pd"),
+                R("Heatsink must be under",need,"\u00b0C/W",
+                  need<=0?"no heatsink can do it \u2014 spread the heat or cut the dissipation":
+                  need<1?"forced air territory":need<5?"a real extruded sink":"a small clip-on sink is enough")];
+   if(isFinite(Rsa)){
+     const tj = Ta + Pd*((isFinite(Rjc)?Rjc:0)+(isFinite(Rcs)?Rcs:0)+Rsa);
+     out.push(R("Junction with that sink",tj,"\u00b0C", tj>Tj?"over the limit":"within the limit"));
+     out.push(R("Margin",Tj-tj,"\u00b0C"));
+     out.push(R("Most it can dissipate",(Tj-Ta)/((isFinite(Rjc)?Rjc:0)+(isFinite(Rcs)?Rcs:0)+Rsa),"W"));
+   }
+   out.push(R("Case temperature",Ta+Pd*((isFinite(Rsa)?Rsa:need)+(isFinite(Rcs)?Rcs:0)),"\u00b0C"));
+   return out;
+ }}
+];
+
+
+/* ---- diagrams for the wire, cable, MOSFET and heatsink pages ------------ */
+DIAGRAMS.wire = (r,o) => SVG(
+  /* the wire, seen end on and along its length */
+  `<rect x="70" y="66" width="230" height="26" rx="13" fill="#C9822E" stroke="var(--ink)" stroke-width="${SW}"/>` +
+  ARROW(70,44,300,44,"") + TX(185,36,"L = "+vv(r,"L","")+" m","middle","var(--esd)",11.5) +
+  `<circle cx="336" cy="79" r="19" fill="#C9822E" stroke="var(--ink)" stroke-width="${SW}"/>` +
+  ARROW(317,79,355,79,"") + TX(336,116,"D = "+vv(r,"D","")+" mm","middle","var(--kapton)",11.5) +
+  TX(185,84,String(r.mat||"Copper, pure"),"middle","#3A2410",12) +
+  TX(140,140,"A = \u03c0D\u00b2/4 = "+(got(o,"Cross section")||"\u2014"),"middle","var(--ink3)",11) +
+  TX(140,160,"R = \u03c1L/A = "+(got(o,"Resistance")||"\u2014"),"middle","var(--kapton)",13),
+  400, 176);
+
+DIAGRAMS.cable = (r,o) => SVG(
+  BOX(20,58,66,44,"SOURCE",vv(r,"V","")) +
+  W([[86,70],[314,70]]) + W([[86,90],[314,90]]) +
+  ARROW(120,58,240,58,"") + TX(180,50,"L = "+vv(r,"L","")+" m one way","middle","var(--esd)",11) +
+  ARROW(240,102,120,102,"") + TX(180,118,"return leg counts too","middle","var(--esd)",11) +
+  BOX(314,58,66,44,"LOAD",vv(r,"I","")+" A") +
+  /* with no cross section given there is no measured drop, only the allowed
+     one - saying "drop \u2014" then reads as a failure rather than a question
+     that was never asked                                                  */
+  TX(200,148,"drop "+(got(o,"Drop at this current")||got(o,"Allowed drop")||"\u2014")+
+             "   \u00b7   need "+(got(o,"Cross section needed")||"\u2014"),"middle","var(--kapton)",12) +
+  TX(200,168,"AWG "+(got(o,"Nearest AWG")||"\u2014"),"middle","var(--ink3)",11),
+  400, 182);
+
+DIAGRAMS.fet = (r,o) => SVG(
+  W([[60,40],[240,40]]) + NODE(40,44,"Vds","end") + VAL(150,32,vv(r,"Vds",""),"middle") +
+  W([[240,40],[240,60]]) + NFET(240,90) + W([[240,120],[240,146]]) + GND(240,146) +
+  TX(206,94,"gate","end","var(--esd)",11) +
+  VAL(256,72,vv(r,"Rds","")+" \u03a9","start") +
+  TX(256,88,vv(r,"f","")+" Hz","start","var(--ink3)",11) +
+  ARROW(120,40,180,40, vv(r,"Id","")+" A") +
+  TX(140,140,"conduction "+(got(o,"Conduction loss")||"\u2014"),"middle","var(--ink3)",11) +
+  TX(140,158,"switching "+(got(o,"Switching loss")||"\u2014"),"middle","var(--ink3)",11) +
+  TX(140,178,"total "+(got(o,"Total in the FET")||"\u2014")+
+             "  \u00b7  Tj "+(got(o,"Junction temperature")||"\u2014"),"middle","var(--kapton)",12),
+  400, 192);
+
+DIAGRAMS.heatsink = (r,o) => {
+  const stage = (x,label,val,col)=>
+    `<rect x="${x}" y="60" width="86" height="40" rx="2" fill="${col}" stroke="var(--ink)" stroke-width="${SW}"/>`
+    + TX(x+43,78,label,"middle","var(--ink)",11) + TX(x+43,92,val||"\u2014","middle","var(--ink3)",10);
+  return SVG(
+    TX(30,84,"die","end","var(--alert)",11) + W([[36,80],[56,80]]) +
+    stage(56,"\u03b8JC",vv(r,"Rjc","")+" \u00b0C/W","var(--alert-soft)") +
+    W([[142,80],[162,80]]) +
+    stage(162,"\u03b8CS",vv(r,"Rcs","")+" \u00b0C/W","var(--kapton-soft)") +
+    W([[248,80],[268,80]]) +
+    stage(268,"\u03b8SA",(vv(r,"Rsa","") || (got(o,"Heatsink must be under")||""))+"","var(--esd-soft)") +
+    W([[354,80],[374,80]]) + TX(380,84,"air","start","var(--esd)",11) +
+    TX(200,36,"Tj "+vv(r,"Tj","")+" \u00b0C  \u2192  Ta "+vv(r,"Ta","")+" \u00b0C  with "+vv(r,"Pd","")+" W",
+       "middle","var(--ink2)",11.5) +
+    TX(200,132,"budget "+(got(o,"Total \u03b8 budget")||"\u2014")+
+               "   \u00b7   sink must be under "+(got(o,"Heatsink must be under")||"\u2014"),
+       "middle","var(--kapton)",12),
+    400, 146);
+};
+
+
+
+/* ---- comparator with hysteresis: circuit plus its transfer loop --------- */
+DIAGRAMS.hyst = (r,o) => {
+  const inv  = (r.topo||"Non-inverting") === "Inverting";
+  /* the two inputs swap between the topologies, nothing else moves */
+  const sigY = inv ? 95 : 125, refY = inv ? 125 : 95;
+  const OX = 190, OY = 110;
+
+  let g = OPAMP(OX,OY) + W([[OX+52,OY],[330,OY]]) + DOT(310,OY) + NODE(372,OY+4,"out","end");
+
+  /* the node that carries R1 and the feedback */
+  g += RESH(90,125,"R1",vv(r,"R1","")) + W([[16,125],[71,125]]) + W([[109,125],[OX,125]]) + DOT(150,125);
+  g += W([[150,125],[150,170]]) + W([[150,170],[221,170]])
+     + RESH(240,170,"R2",vv(r,"R2","")) + W([[259,170],[310,170]]) + W([[310,170],[310,OY]]);
+  /* the other input goes straight in */
+  g += W([[16,95],[OX,95]]);
+
+  g += NODE(14,sigY-9,"Vin","start") + NODE(14,refY-9,"Vref","start")
+     + VAL(60,refY-9, refY===95 ? vv(r,"Vref","") : "", "middle");
+
+  /* Transfer loop: input across, output up. Every label has to fit inside the
+     viewBox - a text baseline below it is simply clipped away.              */
+  const bx=34, bw=146, by=282, bh=86;
+  const yTop = by-bh, yBot = by, axisY = by+6;
+  const VTHs = got(o,"Upper trip point"), VTLs = got(o,"Lower trip point");
+  const th = parseSI(VTHs), tl = parseSI(VTLs);
+  let xh = bx+bw*0.68, xl = bx+bw*0.32;
+  if(isFinite(th) && isFinite(tl) && th !== tl){
+    /* 0.9 of the span as margin puts the two steps 36 % apart, which is wide
+       enough that their labels cannot touch                                 */
+    const span = Math.abs(th-tl), pad = span*0.9;
+    const lo = Math.min(th,tl)-pad, hi = Math.max(th,tl)+pad;
+    const map = t => bx + bw*(t-lo)/(hi-lo);
+    xh = map(Math.max(th,tl)); xl = map(Math.min(th,tl));
+  }
+  g += W([[bx,axisY],[bx+bw+14,axisY]]) + W([[bx-6,axisY],[bx-6,206]])
+     + TX(bx-6,200,"Vout","middle","var(--ink3)",10)
+     + TX(bx+bw+18,axisY+12,"Vin","start","var(--ink3)",10);
+
+  /* which level belongs to which side depends on the topology */
+  const hiFirst = !inv;
+  const yA = hiFirst ? yTop : yBot, yB = hiFirst ? yBot : yTop;
+  g += W([[bx,yB],[xh,yB]]) + W([[xh,yB],[xh,yA]]) + W([[xh,yA],[bx+bw,yA]]);
+  g += W([[bx+bw,yA],[xl,yA]]) + W([[xl,yA],[xl,yB]]) + W([[bx,yB],[xl,yB]]);
+  g += ARROW(xl-26,yB,xl-8,yB,"") + ARROW(xh+26,yA,xh+8,yA,"");
+  g += TX(xl,axisY+16,VTLs||"VTL","middle","var(--kapton)",10.5)
+     + TX(xh,axisY+16,VTHs||"VTH","middle","var(--kapton)",10.5);
+
+  /* the window, the centre and the reason for R2 are all in the table just
+     above the drawing - only the figures that mark a place on the axis are
+     really part of it                                                       */
+  g += TX(214,248,inv ? "rising input \u2192 output low"
+                      : "rising input \u2192 output high","start","var(--ink3)",11);
+  return SVG(g, 400, 316);
+};
+
+const AMP_CALCS = [
+
+{id:"hyst", group:"Op-amps", name:"Comparator with hysteresis",
+ note:"A Schmitt trigger. R2 feeds a little of the output back to the non-inverting input, so the trip point moves away from the input as soon as it flips \u2014 that is what stops a slow or noisy signal from chattering. R1 carries the signal in the non-inverting form, and the reference in the inverting form. Leave R1 empty and state the window you want to size it.",
+ fields:[FS("topo","Topology",["Non-inverting","Inverting"],"Non-inverting"),
+         F("Vref","Reference at the other input","V","2.5"),
+         F("VoH","Output high","V","5"),F("VoL","Output low","V","0"),
+         F("R1","R1 at the node","\u03a9","10k"),
+         F("R2","R2 from the output","\u03a9","100k"),
+         F("Hw","Or the window you want","V","")],
+ run(v){
+   const {topo,Vref,VoH,VoL,R1,R2,Hw} = v;
+   const inv = topo === "Inverting";
+   if(!isFinite(Vref)||!isFinite(VoH)||!isFinite(VoL)) return null;
+   if(VoH <= VoL) return [R("Output",null,"","the high level has to sit above the low level")];
+   const swing = VoH - VoL;
+
+   /* sizing: R1 from a wanted window */
+   if(isFinite(Hw) && Hw>0 && isFinite(R2) && !isFinite(R1)){
+     if(Hw >= swing) return [R("R1",null,"","the window cannot reach the output swing of "+siFmt(swing,"V"))];
+     const need = inv ? R2*Hw/(swing-Hw) : R2*Hw/swing;
+     const e = nearestE24(need);
+     const got = inv ? swing*e/(e+R2) : swing*e/R2;
+     return [RP("R1 needed",need,"\u03a9"),RP("Nearest E24",e,"\u03a9"),
+             R("Window with E24",got,"V"),
+             R("Ratio R1 : R2",need/R2,"\u00d7")];
+   }
+   if(!isFinite(R1)||!isFinite(R2)||R1<=0||R2<=0) return null;
+
+   /* thresholds */
+   let VTH, VTL, hyst;
+   if(inv){
+     /* the node is a divider between Vref through R1 and the output through R2 */
+     VTH = (Vref*R2 + VoH*R1)/(R1+R2);
+     VTL = (Vref*R2 + VoL*R1)/(R1+R2);
+     hyst = swing*R1/(R1+R2);
+   } else {
+     /* the signal reaches the node through R1, the output through R2 */
+     VTH = Vref + (Vref-VoL)*R1/R2;
+     VTL = Vref + (Vref-VoH)*R1/R2;
+     hyst = swing*R1/R2;
+   }
+   const out = [R("Upper trip point",VTH,"V", inv?"crossed on the way up, output goes low":"crossed on the way up, output goes high"),
+                R("Lower trip point",VTL,"V", inv?"crossed on the way down, output goes high":"crossed on the way down, output goes low"),
+                R("Window",hyst,"V","how far the signal must come back before it flips again"),
+                R("Centre of the window",(VTH+VTL)/2,"V"),
+                R("Feedback fraction",inv ? R1/(R1+R2) : R1/R2,"\u00d7","of the output swing")];
+
+   /* a threshold outside the output range can never be reached */
+   const lo = Math.min(VoL,VoH), hi = Math.max(VoL,VoH);
+   if(VTH > hi || VTL < lo)
+     out.push(R("Warning",null,"","a trip point sits outside "+siFmt(lo,"V")+" to "+siFmt(hi,"V")+" \u2014 the output would latch and never come back"));
+   if(hyst < 0.02)
+     out.push(R("Warning",null,"","a window under 20 mV is thinner than the noise on most boards"));
+   out.push(R("Current in the feedback leg at the flip",swing/(R1+R2),"A","keep it well inside what the output can source"));
+   return out;
+ }}
+];
+
+NEW_CALCS.concat(WIRE_CALCS, POWER_CALCS, AMP_CALCS).forEach(c=>CALCS.push(c));
+const GROUP_ORDER = ["Basics","Components","Filters","Op-amps","Power","Wire","Measurement"];
+CALCS.sort((a,b)=> GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group));
+
+function calcById(id){ return CALCS.find(c=>c.id===id) || CALCS[0]; }
+function calcRun(c){
+  const raw = ui.calcVals[c.id] || {};
+  const v = {};
+  c.fields.forEach(f=>{
+    if(f.t==="text") v[f.k] = String(raw[f.k]||"").trim();
+    else if(f.t==="sel") v[f.k] = (raw[f.k]!==undefined && raw[f.k]!=="") ? raw[f.k] : (f.def||f.opts[0]);
+    else v[f.k] = parseSI(raw[f.k], f.unit);
+  });
+  try{ return c.run(v, raw); }catch(e){ return null; }
+}
+function calcDiagram(c){
+  const f = DIAGRAMS[c.id];
+  if(!f) return "";
+  try{ return `<div class="schem">${f(ui.calcVals[c.id]||{}, calcRun(c))}</div>`; }catch(e){ return ""; }
+}
+function calcOutHTML(c){
+  const rows = calcRun(c);
+  if(!rows) return `<p style="color:var(--ink3);font-size:13px;margin:0">Fill the boxes above.</p>`;
+  return `<table><tbody>${rows.map(r=>{
+      /* a row with no number carries its whole message in the note */
+      const bare = (r.value===null || r.value===undefined || r.value==="");
+      const val  = bare ? (r.note||"\u2014")
+                        : (typeof r.value==="number" ? siFmt(r.value,r.unit)
+                                                     : String(r.value)+(r.unit?" "+r.unit:""));
+      return `<tr>
+      <td style="width:46%">${esc(r.label)}${(!bare && r.note)?`<br><span style="color:var(--ink3);font-size:11px">${esc(r.note)}</span>`:""}</td>
+      <td class="m" style="font-size:${bare?"12.5px":"15px"};font-weight:${bare?"400":"600"};color:${bare?"var(--ink2)":"inherit"}">${esc(val)}</td>
+    </tr>`;}).join("")}</tbody></table>`;
+}
+
+function calcUnitHints(c){
+  const seen = new Set(), out = [];
+  for(const f of c.fields){
+    if(f.t==="sel" || f.t==="text") continue;
+    const u = String(f.unit||"").trim();
+    if(!u || seen.has(u)) continue;
+    seen.add(u);
+    out.push((f.ph && /^[\d.]/.test(f.ph) ? f.ph : "10") + u);
+  }
+  return out;
+}
+
+function calcSeed(c){
+  if(ui.calcVals[c.id]) return;
+  const v = {};
+  c.fields.forEach(f=>{ if(f.ph !== undefined && f.ph !== "") v[f.k] = String(f.ph); });
+  ui.calcVals[c.id] = v;
+}
+
+function viewCalc(){
+  const c = calcById(ui.calc);
+  calcSeed(c);
+  const raw = ui.calcVals[c.id] || {};
+  return `<div class="panel"><h2>${esc(c.name)}</h2>
+      ${c.note?`<p>${esc(c.note)}</p>`:""}
+      <div class="form" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+        ${c.fields.map(f=>`<div class="f">
+          <label class="lab">${esc(f.label)}${f.unit?` <span style="color:var(--ink3)">${esc(f.unit)}</span>`:""}</label>
+          ${f.t==="sel"
+            ? `<select class="calcin" data-ck="${esc(f.k)}">${f.opts.map(o=>{
+                 const cur = (raw[f.k]!==undefined && raw[f.k]!=="") ? raw[f.k] : (f.def||f.opts[0]);
+                 return `<option${o===cur?" selected":""}>${esc(o)}</option>`;}).join("")}</select>`
+            : `<input class="calcin" data-ck="${esc(f.k)}" value="${esc(raw[f.k]||"")}" placeholder="${esc(f.ph||"")}"
+                 inputmode="text" spellcheck="false" autocomplete="off">`}</div>`).join("")}
+      </div>
+      <div class="sheetbar"><button class="btn ghost" id="calcClear">Clear</button>
+        <span style="color:var(--ink3);font-size:12px">${(()=>{ const u = calcUnitHints(c);
+          return u.length ? `This page takes ${u.map(x=>`<span class="pn">${esc(x)}</span>`).join(" ")}
+            — the unit is optional, and understood when it is there. ` : "";})()}Engineering
+        notation works: <span class="pn">4k7</span> <span class="pn">100n</span> <span class="pn">10u</span>
+        <span class="pn">1M</span> — capital M is mega, small m is milli.</span></div>
+    </div>
+    <div class="panel" id="calcOut">${calcDiagram(c)}${calcOutHTML(c)}</div>
+    ${c.ref?`<div class="panel">${c.ref()}</div>`:""}`;
+}
+
+const ALIAS = {
+  cable:"awg gauge resistivity", wire:"awg gauge resistivity", smd:"eia96",
+  rc:"cutoff corner", lc:"resonant", buck:"smps", boost:"smps", ldo:"dropout",
+  batt:"mah", divider:"potential", react:"impedance", rcolor:"stripes",
+  shunt:"burden", zener:"clamp"
+};
+
+/* ----------------------------------------------------------------- render */
+function render(){
+  renderRail();
+  $("#stage").innerHTML = viewCalc();
+  save();
+}
+
+function renderRail(){
+  const q = ui.q.trim().toLowerCase();
+  /* the title is not always what someone types, so the field labels, their
+     units and the dropdown entries are searched too - and past that, the
+     words below, which appear nowhere in a calculator's own wording. Those
+     were measured rather than guessed: every one of them found nothing.   */
+  const hay = c => (c.name+" "+c.group+" "+c.id+" "+(c.note||"")+" "+(ALIAS[c.id]||"")+" "+
+    (c.fields||[]).map(f=>f.label+" "+(f.unit||"")+" "+((f.opts||[]).join(" "))).join(" ")).toLowerCase();
+  const hit = c => !q || hay(c).includes(q);
+  const shown = CALCS.filter(hit);
+  if(!shown.length){
+    $("#cats").innerHTML = `<span style="color:var(--ink3);font-size:12px">Nothing matches "${esc(ui.q.trim())}".</span>`;
+    return;
+  }
+  const groups = [...new Set(shown.map(c=>c.group))];
+  $("#cats").innerHTML = groups.map(g=>
+    `<div class="lab" style="margin:10px 0 4px">${esc(g)}</div>` +
+    shown.filter(c=>c.group===g).map(c=>
+      `<button class="cat${ui.calc===c.id?" on":""}" data-calc="${c.id}" title="${esc(c.name)}">
+         <span>${esc(c.name)}</span></button>`).join("")
+  ).join("");
+}
+
+/* ----------------------------------------------------------------- events */
+document.addEventListener("click", ev=>{
+  const t = ev.target;
+  const ck = t.closest("[data-calc]");
+  if(ck){ ui.calc = ck.dataset.calc; render(); window.scrollTo(0,0); return; }
+  if(t.id==="calcClear"){
+    delete ui.calcVals[ui.calc];
+    render();
+    return;
+  }
+});
+
+const reRun = ()=>{
+  const c = calcById(ui.calc);
+  const out = $("#calcOut");
+  if(out) out.innerHTML = calcDiagram(c) + calcOutHTML(c);
+  save();
+};
+document.addEventListener("input", ev=>{
+  if(ev.target.classList && ev.target.classList.contains("calcin")){
+    const c = calcById(ui.calc);
+    ui.calcVals[c.id] = ui.calcVals[c.id] || {};
+    ui.calcVals[c.id][ev.target.dataset.ck] = ev.target.value;
+    reRun();
+    return;
+  }
+  if(ev.target.id==="q"){ ui.q = ev.target.value; renderRail(); }
+});
+document.addEventListener("change", ev=>{
+  if(ev.target.classList && ev.target.classList.contains("calcin")){
+    const c = calcById(ui.calc);
+    ui.calcVals[c.id] = ui.calcVals[c.id] || {};
+    ui.calcVals[c.id][ev.target.dataset.ck] = ev.target.value;
+    reRun();
+  }
+});
+document.addEventListener("keydown", e=>{
+  if(e.key==="/" && !/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)){
+    e.preventDefault(); $("#q").focus(); $("#q").select(); return;
+  }
+  if(e.key==="Escape" && e.target.id==="q"){ ui.q=""; $("#q").value=""; renderRail(); }
+});
+
+/* A calculator can be linked to directly, so one of these can be sent to
+   someone or kept in a browser tab of its own.                            */
+function fromHash(){
+  const id = decodeURIComponent(String(location.hash||"").replace(/^#/,"")).trim();
+  if(id && CALCS.some(c=>c.id===id)){ ui.calc = id; return true; }
+  return false;
+}
+window.addEventListener("hashchange", ()=>{ if(fromHash()) render(); });
+
+try{
+  load();
+  fromHash();
+  render();
+}catch(err){
+  const d = document.createElement("pre");
+  d.className = "fatal";
+  d.textContent = "The page could not start:\n" + (err && err.stack ? err.stack : err) +
+                  "\n\nSend this text back and it can be fixed.";
+  document.body.appendChild(d);
+}
+</script>
+</body>
+</html>
