@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Circuit Calcs — bench calculators that draw themselves</title>
-<meta name="description" content="Twenty-five bench calculators, each drawn as a schematic that redraws as you type. One HTML file, no server, no dependencies.">
+<meta name="description" content="Twenty-nine bench calculators, each drawn as a schematic that redraws as you type. One HTML file, no server, no dependencies.">
 <style>
 :root{
   /* palette: printed bin label on the bench — paper, Kapton amber, ESD blue */
@@ -45,9 +45,11 @@ button{cursor:pointer;background:none;border:0}
 .hint{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-family:var(--mono);
       font-size:11px;color:var(--ink3);border:1px solid var(--rule);border-radius:3px;padding:1px 6px}
 .views{display:flex;gap:2px}
-.views button{font-family:var(--label);text-transform:uppercase;letter-spacing:.1em;font-size:12px;
+.views button,.views a{font-family:var(--label);text-transform:uppercase;letter-spacing:.1em;font-size:12px;
               font-weight:700;color:var(--ink2);padding:8px 11px;border-bottom:2px solid transparent}
-.views button:hover{color:var(--ink)}
+/* the one tab that is a different page, so it never takes the current mark */
+.views a{text-decoration:none;white-space:nowrap}
+.views button:hover,.views a:hover{color:var(--ink)}
 .views button.on{color:var(--ink);border-bottom-color:var(--kapton)}
 
 /* ---------- shell ---------- */
@@ -182,6 +184,16 @@ td.num{font-variant-numeric:tabular-nums}
 .form{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}
 .f{display:flex;flex-direction:column;gap:3px}
 .f.wide{grid-column:1/-1}
+.form>.f.newrow{grid-column:1}
+.form>.f>.lab{height:42px;display:flex;align-items:flex-end;line-height:1.25}
+.field-unit{margin-inline-start:7px;white-space:nowrap;font-family:var(--mono);font-size:10.5px;
+            font-weight:600;letter-spacing:0;text-transform:none;color:var(--ink3)}
+.form>.f>.calcin{height:35px;min-height:35px}
+.f.checkfield{justify-content:flex-end}
+.checkrow{height:35px;display:flex;align-items:center;gap:8px;font-family:var(--label);text-transform:uppercase;
+          letter-spacing:.1em;font-size:11px;color:var(--ink2);font-weight:700;cursor:pointer}
+.f .checkrow input.calcin{appearance:auto;width:16px;min-width:16px;height:16px;min-height:16px;margin:0;padding:0;
+                           accent-color:var(--kapton)}
 .f input,.f select,.f textarea{border:1px solid var(--rule);background:var(--paper);padding:7px 9px;
                                font-family:var(--mono);font-size:13px;border-radius:2px;outline:0;width:100%}
 .f input:focus,.f select:focus,.f textarea:focus{border-color:var(--kapton);background:#fff}
@@ -224,9 +236,29 @@ td.num{font-variant-numeric:tabular-nums}
 .stockbtn{font-family:var(--label);text-transform:uppercase;letter-spacing:.08em;font-weight:700;
            font-size:10px;border:1px solid currentColor;padding:2px 7px;border-radius:2px;background:none}
 .stockbtn:hover{background:var(--rule2)}
-.schem{border:1px solid var(--rule2);background:var(--paper);padding:10px 6px;margin-bottom:14px;border-radius:2px}
-.schem svg{max-height:260px}
-@media print{ .schem{border-color:#000} }
+.schem{position:relative;isolation:isolate;overflow:hidden;border:1px solid var(--rule);margin-bottom:14px;
+       padding:35px 14px 14px;border-radius:3px;background-color:var(--paper);
+       background-image:radial-gradient(circle at 1px 1px,var(--rule2) .8px,transparent .9px);
+       background-size:12px 12px}
+.schem-head{position:absolute;z-index:1;top:10px;left:13px;right:13px;display:flex;align-items:center;
+            justify-content:space-between;gap:12px;padding-bottom:7px;border-bottom:1px solid var(--rule2);
+            font-family:var(--label);font-weight:700;text-transform:uppercase;letter-spacing:.13em;font-size:10px;color:var(--ink2)}
+.schem-head b{display:flex;align-items:center;gap:6px;color:var(--ink)}
+.schem-head b::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--kapton);box-shadow:0 0 0 3px var(--kapton-soft)}
+.schem-head span{font-family:var(--mono);font-size:9.5px;letter-spacing:.03em;color:var(--ink3)}
+.schem svg{position:relative;z-index:0;width:100%;max-height:340px}
+.schem svg .diagram-canvas{fill:rgba(255,255,255,.42);stroke:var(--rule2);stroke-width:1}
+.schem svg .diagram-wire{stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.schem svg .diagram-node{stroke:var(--paper);stroke-width:1.2;vector-effect:non-scaling-stroke}
+.schem svg .diagram-part{stroke-linejoin:round;filter:drop-shadow(0 1px 0 rgba(22,24,28,.10))}
+.schem svg .diagram-part:not(path){fill:var(--esd-soft)}
+.schem svg path.diagram-part,.schem svg .diagram-accent{stroke:var(--esd)}
+.schem svg .diagram-diode{stroke:var(--ink);stroke-width:1.5;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.schem svg .diagram-arrow-head{filter:drop-shadow(0 1px 0 rgba(22,24,28,.10))}
+.schem svg .diagram-text{paint-order:stroke;stroke:var(--paper);stroke-width:3px;stroke-linejoin:round}
+.schem svg .diagram-value{font-weight:700;letter-spacing:.01em}
+.schem svg .diagram-node-label{font-weight:700;letter-spacing:.035em}
+@media print{ .schem{border-color:#000;background:#fff;padding-top:16px}.schem-head{display:none} }
 
 .labels{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
 .label{border:1px solid var(--ink);background:var(--card);padding:8px 10px;break-inside:avoid}
@@ -269,14 +301,17 @@ td.num{font-variant-numeric:tabular-nums}
 <header class="top">
   <div class="brand">
     <span class="brand-mark">Circuit Calcs</span>
-    <span class="brand-sub">twenty-five, each drawn as a schematic</span>
+    <span class="brand-sub">twenty-nine, each drawn as a schematic</span>
   </div>
   <div class="searchwrap">
     <input id="q" type="search" placeholder="divider   ·   trace width   ·   AWG   ·   buck" autocomplete="off" spellcheck="false">
     <span class="hint">/</span>
   </div>
   <nav class="views" id="views">
-    <a class="btn ghost" id="binLink" href="https://ajengineering.github.io/parts-bin-app/" target="_blank" rel="noreferrer">Parts Bin &#8599;</a>
+    <button data-view="calc" class="on">Calculators</button>
+    <button data-view="about">About</button>
+    <a id="binLink" href="https://ajengineering.github.io/parts-bin-app/" target="_blank"
+       rel="noreferrer" title="the component inventory these came out of">Parts Bin &#8599;</a>
   </nav>
 </header>
 
@@ -295,14 +330,17 @@ td.num{font-variant-numeric:tabular-nums}
 <script>
 "use strict";
 const APP_VERSION = "1.0.0";
+const REPO_URL = "https://github.com/AJEngineering/circuit-calcs";
+const BIN_URL  = "https://github.com/AJEngineering/parts-bin-app";
 const $  = (s,r=document)=>r.querySelector(s);
+const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
 const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const num = n => (Math.round(n*100)/100).toLocaleString("en-US");
 
 /* What the page remembers between visits: which calculator was open and what
    was typed into each. Nothing else - there is nothing else to keep.       */
 const KEY = "circuit-calcs-v1";
-const ui = {calc:"ohm", calcVals:{}, q:""};
+const ui = {calc:"ohm", calcVals:{}, q:"", view:"calc"};
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify({calc:ui.calc, calcVals:ui.calcVals})); }catch(e){} }
 function load(){
   try{
@@ -314,6 +352,24 @@ function load(){
       if(s.calcVals && typeof s.calcVals==="object") ui.calcVals = s.calcVals;
     }
   }catch(e){}
+}
+function migrateCalculatorIds(){
+  /* The loaded-divider calculator replaces the original divider. Keep the
+     new inputs and direct links working for people who used the old id. */
+  if(ui.calcVals.dividerload){
+    ui.calcVals.divider = ui.calcVals.dividerload;
+    delete ui.calcVals.dividerload;
+  }
+  if(ui.calc==="dividerload") ui.calc="divider";
+  /* The original trace page measured length in metres. The expanded trace
+     page uses millimetres, so preserve saved calculations once. */
+  const trace = ui.calcVals.trace;
+  if(trace && !trace.pcbTraceViaV1 && !trace.pcbTraceWidthV2 && trace.len!==undefined &&
+     trace.width===undefined && trace.layer===undefined){
+    const oldLength = parseSI(trace.len,"m");
+    if(isFinite(oldLength) && oldLength>=0) trace.len = String(oldLength*1000);
+    trace.pcbTraceWidthV2 = true;
+  }
 }
 
 /* ---------------------------------------------------------- calculators ---
@@ -383,12 +439,55 @@ function nearestE24(x){
   }
   return best;
 }
-const F  = (k,label,unit,ph)=>({k,label,unit,ph});            /* engineering number */
+/* For a base resistor we must never round upward and starve the transistor of
+   drive; for a reservoir capacitor we must never round downward and lose the
+   ripple target. These are the two safe directions through the same E24 set. */
+function e24AtMost(x){
+  if(!isFinite(x) || x<=0) return NaN;
+  const dec = Math.floor(Math.log10(x));
+  let best = 0;
+  for(const d of [dec-1,dec,dec+1]) for(const e of E24){
+    const v = e*Math.pow(10,d-1);
+    if(v<=x && v>best) best=v;
+  }
+  return best || E24[0]*Math.pow(10,dec-2);
+}
+function e24AtLeast(x){
+  if(!isFinite(x) || x<=0) return NaN;
+  const dec = Math.floor(Math.log10(x));
+  let best = Infinity;
+  for(const d of [dec-1,dec,dec+1]) for(const e of E24){
+    const v = e*Math.pow(10,d-1);
+    if(v>=x && v<best) best=v;
+  }
+  return best;
+}
+/* `def` is used only when a field is absent or blank. This lets a calculator
+   gain an optional engineering check without breaking values saved earlier. */
+const F  = (k,label,unit,ph,def,newRow)=>({k,label,unit,ph,def,newRow}); /* engineering number */
 const FT = (k,label,ph)=>({k,label,ph,t:"text"});             /* raw text, not parsed */
 const FS = (k,label,opts,def)=>({k,label,opts,def,t:"sel"});  /* dropdown */
+const FC = (k,label,def)=>({k,label,def,t:"check"});           /* checkbox */
 const R = (label,value,unit,note)=>({label,value,unit,note});
 /* same, but the value names a part you might already own */
 const RP = (label,value,unit,note)=>({label,value,unit,note,find:true});
+/* Closed-form fits used by KiCad for IPC-2152 trace-current data. They give
+   a useful first pass; the finished board stack-up and copper planes still
+   need to be checked with the PCB fabricator for a release design. */
+const PCB_CU_UM_PER_OZ = 34.8;
+const PCB_TRACE_FIT = {
+  External:{K:215.3,a:2,b:-1.15,c:-1.0},
+  Internal:{
+    0.5:{K:120,a:2,b:-1.10,c:-1.52}, 1:{K:200,a:1.9,b:-1.10,c:-1.52},
+    2:{K:300,a:2,b:-1.15,c:-1.52}, 3:{K:262.5,a:1.9,b:-1.15,c:-1.52}
+  }
+};
+function pcbTraceFit(layer, oz){
+  if(layer==="External") return PCB_TRACE_FIT.External;
+  const weights = [0.5,1,2,3];
+  const nearest = weights.reduce((best,w)=>Math.abs(w-oz)<Math.abs(best-oz)?w:best, weights[0]);
+  return PCB_TRACE_FIT.Internal[nearest];
+}
 const CALCS = [
 {id:"ohm", group:"Basics", name:"Ohm's law & power",
  note:"Fill any two boxes. The other two follow.",
@@ -404,26 +503,6 @@ const CALCS = [
    else if(has(r)&&has(P)){ V=Math.sqrt(P*r); I=Math.sqrt(P/r); }
    else return null;
    return [R("Voltage",V,"V"),R("Current",I,"A"),R("Resistance",r,"\u03a9"),R("Power",P,"W")];
- }},
-
-{id:"divider", group:"Basics", name:"Voltage divider",
- note:"R1 sits between the input and the tap, R2 between the tap and ground. Leave R2 empty and give a target output to size it.",
- fields:[F("Vin","Input","V","12"),F("R1","R1 top","\u03a9","10k"),F("R2","R2 bottom","\u03a9","3k3"),F("Vt","Target output (optional)","V","3.3")],
- run(v){
-   const {Vin,R1,R2,Vt} = v;
-   if(isFinite(Vin)&&isFinite(R1)&&isFinite(Vt)&&!isFinite(R2)){
-     if(Vt>=Vin) return [R("R2","\u2014","","target must be below the input")];
-     const r2 = R1*Vt/(Vin-Vt);
-     const e  = nearestE24(r2);
-     return [R("R2 needed",r2,"\u03a9"),RP("Nearest E24",e,"\u03a9"),
-             R("Output with E24", Vin*e/(R1+e),"V"),
-             R("Divider current", Vin/(R1+e),"A")];
-   }
-   if(!isFinite(Vin)||!isFinite(R1)||!isFinite(R2)) return null;
-   const I = Vin/(R1+R2), Vo = Vin*R2/(R1+R2);
-   return [R("Output",Vo,"V"),R("Divider current",I,"A"),
-           R("Loss in R1",I*I*R1,"W"),R("Loss in R2",I*I*R2,"W"),
-           R("Thevenin resistance",R1*R2/(R1+R2),"\u03a9","source impedance seen by the load")];
  }},
 
 {id:"led", group:"Basics", name:"LED series resistor",
@@ -543,40 +622,50 @@ const CALCS = [
 
 {id:"buck", group:"Power", name:"Buck converter",
  fields:[F("Vin","Input","V","12"),F("Vout","Output","V","5"),F("Iout","Load current","A","2"),
-         F("f","Switching frequency","Hz","500k"),F("L","Inductor","H","10u"),F("Cout","Output capacitor","F","22u")],
- run(v){
-   const {Vin,Vout,Iout,f,L,Cout} = v;
-   if(!isFinite(Vin)||!isFinite(Vout)||!isFinite(f)||!isFinite(L)||f<=0||L<=0) return null;
-   const D = Vout/Vin;
-   const dI = (Vin-Vout)*D/(f*L);
-   const out = [R("Duty cycle",100*D,"%"),R("Inductor ripple \u0394IL",dI,"A")];
-   if(isFinite(Iout)){
-     out.push(R("Ripple share of load",100*dI/Iout,"%","30 \u2013 40 % is the usual target"));
-     out.push(R("Peak inductor current",Iout+dI/2,"A","the saturation rating must clear this"));
-     out.push(R("Input RMS ripple current",Iout*Math.sqrt(D*(1-D)),"A","sets the input capacitor"));
-   }
-   if(isFinite(Cout)&&Cout>0) out.push(R("Output ripple, capacitor only",dI/(8*f*Cout),"V","ESR adds \u0394IL \u00d7 ESR on top"));
-   out.push(RP("Inductor for 30 % ripple",(Vin-Vout)*D/(f*0.3*(isFinite(Iout)?Iout:1)),"H"));
-   return out;
- }},
+          F("f","Switching frequency","Hz","500k"),F("L","Inductor","H","10u"),
+          F("Cout","Output capacitor","F","22u"),F("ESR","Capacitor ESR","Ω","20m")],
+  run(v){
+    const {Vin,Vout,Iout,f,L,Cout,ESR} = v;
+    if(!isFinite(Vin)||!isFinite(Vout)||!isFinite(Iout)||!isFinite(f)||!isFinite(L)||
+       Vin<=0||Vout<=0||Iout<=0||f<=0||L<=0) return null;
+    if(Vout>=Vin) return [R("Topology",null,"","a buck needs Vout below Vin")];
+    const D = Vout/Vin;
+    const dI = (Vin-Vout)*D/(f*L), iPk=Iout+dI/2, iVal=Iout-dI/2;
+    const dVC = isFinite(Cout)&&Cout>0 ? dI/(8*f*Cout) : NaN;
+    const dVESR = isFinite(ESR)&&ESR>=0 ? dI*ESR : 0;
+    const out = [R("Duty cycle",100*D,"%"),R("Inductor average current",Iout,"A"),
+                 R("Inductor ripple \u0394IL",dI,"A",(100*dI/Iout).toFixed(1)+" % of load current"),
+                 R("Inductor peak current",iPk,"A","the saturation rating must clear this"),
+                 R("Inductor valley current",iVal,"A"),
+                 R("Input RMS ripple current",Iout*Math.sqrt(D*(1-D)),"A","sets the input capacitor"),
+                 R("Output ripple (capacitive)",dVC,"V"),R("Output ripple (ESR)",dVESR,"V"),
+                 R("Estimated output ripple",isFinite(dVC)?dVC+dVESR:NaN,"V"),
+                 RP("Inductor for 30 % ripple",(Vin-Vout)*D/(f*0.3*Iout),"H")];
+    if(iVal<=0) out.push(R("Mode",null,"","inductor current reaches zero — this is discontinuous mode, so the ripple estimate no longer applies"));
+    return out;
+  }},
 
 {id:"boost", group:"Power", name:"Boost converter",
  fields:[F("Vin","Input","V","3.7"),F("Vout","Output","V","12"),F("Iout","Load current","A","0.5"),
-         F("f","Switching frequency","Hz","500k"),F("L","Inductor","H","10u"),F("Cout","Output capacitor","F","47u")],
- run(v){
-   const {Vin,Vout,Iout,f,L,Cout} = v;
-   if(!isFinite(Vin)||!isFinite(Vout)||!isFinite(f)||!isFinite(L)||f<=0||L<=0||Vout<=Vin) return null;
-   const D = 1 - Vin/Vout;
-   const dI = Vin*D/(f*L);
-   const out = [R("Duty cycle",100*D,"%"),R("Inductor ripple \u0394IL",dI,"A")];
-   if(isFinite(Iout)){
-     const Iin = Iout/(1-D);
-     out.push(R("Average input current",Iin,"A"),
-              R("Peak inductor current",Iin+dI/2,"A","the switch and the diode see this too"));
-   }
-   if(isFinite(Cout)&&Cout>0&&isFinite(Iout)) out.push(R("Output ripple, capacitor only",Iout*D/(f*Cout),"V"));
-   return out;
- }},
+          F("f","Switching frequency","Hz","500k"),F("L","Inductor","H","10u"),
+          F("Cout","Output capacitor","F","47u"),F("ESR","Capacitor ESR","Ω","20m")],
+  run(v){
+    const {Vin,Vout,Iout,f,L,Cout,ESR} = v;
+    if(!isFinite(Vin)||!isFinite(Vout)||!isFinite(Iout)||!isFinite(f)||!isFinite(L)||
+       Vin<=0||Vout<=0||Iout<=0||f<=0||L<=0||Vout<=Vin) return null;
+    const D = 1 - Vin/Vout;
+    const iL=Iout/(1-D), dI=Vin*D/(f*L), iPk=iL+dI/2, iVal=iL-dI/2;
+    const dVC=isFinite(Cout)&&Cout>0 ? Iout*D/(f*Cout) : NaN;
+    const dVESR=isFinite(ESR)&&ESR>=0 ? dI*ESR : 0;
+    const out = [R("Duty cycle",100*D,"%"),R("Inductor average current",iL,"A"),
+                 R("Inductor ripple \u0394IL",dI,"A",(100*dI/iL).toFixed(1)+" % of average current"),
+                 R("Inductor peak current",iPk,"A","the switch and diode must clear this"),
+                 R("Inductor valley current",iVal,"A"),R("Output ripple (capacitive)",dVC,"V"),
+                 R("Output ripple (ESR)",dVESR,"V"),R("Estimated output ripple",isFinite(dVC)?dVC+dVESR:NaN,"V"),
+                 RP("Inductor for 30 % ripple",Vin*D/(f*0.3*iL),"H")];
+    if(iVal<=0) out.push(R("Mode",null,"","inductor current reaches zero — this is discontinuous mode, so the ripple estimate no longer applies"));
+    return out;
+  }},
 
 {id:"shunt", group:"Measurement", name:"Current sense shunt",
  note:"Sizing a shunt and the amplifier in front of an ADC.",
@@ -601,28 +690,36 @@ const CALCS = [
    return out;
  }},
 
-{id:"trace", group:"Measurement", name:"PCB trace width, IPC-2221",
- note:"Width for a chosen temperature rise. External traces cool better than buried ones.",
- fields:[F("I","Current","A","16"),F("dT","Temperature rise","\u00b0C","20"),
-         F("oz","Copper weight","oz","1"),F("len","Length (optional)","m","0.1")],
+{id:"trace", group:"Measurement", name:"PCB trace current & width",
+ note:"Trace sizing uses KiCad's closed-form fits to IPC-2152 data. Copper planes, airflow, nearby heat sources and the finished stack-up still need to be checked with the PCB fabricator.",
+ fields:[F("I","Peak / RMS current","A","3"),FS("layer","Copper layer",["External","Internal"],"External"),
+         F("oz","Finished copper weight","oz","1"),F("dT","Allowed temperature rise","\u00b0C","20"),
+         F("Tamb","Ambient temperature","\u00b0C","25","25"),F("len","Trace length","mm","50","50"),
+         F("width","Selected trace width","mm","1","1"),F("V","Rail voltage (optional)","V","5")],
  run(v){
-   const {I,dT,oz,len} = v;
-   if(!isFinite(I)||!isFinite(dT)||!isFinite(oz)||I<=0||dT<=0||oz<=0) return null;
-   const width = (k)=>{
-     const area = Math.pow(I/(k*Math.pow(dT,0.44)), 1/0.725);   /* mils^2 */
-     return area/(oz*1.378);                                    /* mils */
-   };
-   const ext = width(0.048), int_ = width(0.024);
-   const out = [R("External layer",ext*0.0254,"mm"),R("External layer",ext,"mil"),
-                R("Internal layer",int_*0.0254,"mm"),R("Internal layer",int_,"mil")];
-   if(isFinite(len)&&len>0){
-     /* copper 1.72e-8 ohm.m, 1 oz = 34.8 um */
-     const t = oz*34.8e-6, w = ext*0.0254e-3;
-     const Rt = 1.72e-8*len/(w*t);
-     out.push(R("Resistance of the external trace",Rt,"\u03a9"),
-              R("Drop at this current",Rt*I,"V"),
-              R("Heat in the trace",Rt*I*I,"W"));
-   }
+   const {I,layer,oz,dT,Tamb,len,width,V} = v;
+   if(!isFinite(I)||!isFinite(oz)||!isFinite(dT)||!isFinite(Tamb)||!isFinite(len)||!isFinite(width)||
+      I<=0||oz<=0||dT<=0||len<=0||width<=0) return null;
+   const fit = pcbTraceFit(layer,oz);
+   const thicknessUM = oz*PCB_CU_UM_PER_OZ, thicknessMil = thicknessUM/25.4;
+   const widthMil = width/0.0254;
+   const traceRise = fit.K*Math.pow(I,fit.a)*Math.pow(widthMil,fit.b)*Math.pow(thicknessMil,fit.c);
+   const requiredMil = Math.pow(dT/(fit.K*Math.pow(I,fit.a)*Math.pow(thicknessMil,fit.c)),1/fit.b);
+   const requiredWidth = requiredMil*0.0254, recommendedWidth=1.5*requiredWidth;
+   const currentAtWidth = Math.pow(dT/(fit.K*Math.pow(widthMil,fit.b)*Math.pow(thicknessMil,fit.c)),1/fit.a);
+   const traceTemp = Tamb+traceRise;
+   const rhoCu = 1.724e-8*(1+0.00393*(traceTemp-20));
+   const traceArea = width*1e-3*thicknessUM*1e-6;
+   const traceR = rhoCu*(len*1e-3)/traceArea, traceDrop=I*traceR, tracePower=I*I*traceR;
+   const widthVerdict = width<requiredWidth ? "selected trace is narrower than the calculated minimum" : "selected trace meets the entered temperature-rise target";
+   const out = [R("Copper thickness",thicknessUM,"\u00b5m",oz+" oz finished copper"),
+           R("Calculated minimum trace width",requiredWidth,"mm","for the entered current and allowed temperature rise"),
+           R("Recommended trace width",recommendedWidth,"mm","1.5\u00d7 calculated minimum for layout margin"),
+           R("Trace temperature rise",traceRise,"\u00b0C",widthVerdict),R("Estimated trace temperature",traceTemp,"\u00b0C"),
+           R("Current at selected width",currentAtWidth,"A","at the entered allowed temperature rise"),
+           R("Trace resistance",traceR,"\u03a9","at estimated trace temperature"),R("Trace voltage drop",traceDrop,"V"),
+           R("Trace dissipation",tracePower,"W"),R("Design verdict",null,"",widthVerdict)];
+   if(isFinite(V) && V>0) out.splice(8,0,R("Trace voltage drop (%)",100*traceDrop/V,"%","of entered rail voltage"));
    return out;
  }},
 
@@ -647,41 +744,47 @@ const SW = 1.7;
    symbols - a battery drawn on its side and wired upright looks wrong.     */
 const RL = 38, RW = 15;                       /* resistor body length, width */
 
-function W(pts){ return `<polyline points="${pts.map(p=>p.join(",")).join(" ")}" fill="none" stroke="var(--ink)" stroke-width="${SW}"/>`; }
-function DOT(x,y){ return `<circle cx="${x}" cy="${y}" r="3.2" fill="var(--ink)"/>`; }
-function TX(x,y,t,anchor,color,size){
+function W(pts,accent){ return `<polyline class="diagram-wire${accent?" diagram-accent":""}" points="${pts.map(p=>p.join(",")).join(" ")}" fill="none" stroke="var(--ink)" stroke-width="${SW}"/>`; }
+function DOT(x,y){ return `<circle class="diagram-node" cx="${x}" cy="${y}" r="3.2" fill="var(--ink)"/>`; }
+function TX(x,y,t,anchor,color,size,kind){
   if(t===undefined || t===null || t==="") return "";
-  return `<text x="${x}" y="${y}" text-anchor="${anchor||"middle"}" font-family="ui-monospace,monospace"
+  return `<text class="diagram-text${kind?" diagram-"+kind:""}" x="${x}" y="${y}" text-anchor="${anchor||"middle"}" font-family="ui-monospace,monospace"
     font-size="${size||11}" fill="${color||"var(--ink2)"}">${esc(t)}</text>`;
 }
-function VAL(x,y,t,anchor){ return TX(x,y,t,anchor,"var(--kapton)",11.5); }
-function NODE(x,y,label,anchor){ return TX(x,y,label,anchor||"middle","var(--esd)",11); }
+function VAL(x,y,t,anchor){ return TX(x,y,t,anchor,"var(--kapton)",11.5,"value"); }
+function NODE(x,y,label,anchor){ return TX(x,y,label,anchor||"middle","var(--esd)",11,"node-label"); }
 
 /* horizontal resistor: terminals (x-19,y) and (x+19,y) */
 function RESH(x,y,label,val){
-  return `<rect x="${x-RL/2}" y="${y-RW/2}" width="${RL}" height="${RW}" fill="var(--card)" stroke="var(--ink)" stroke-width="${SW}"/>`
+  return `<rect class="diagram-part" x="${x-RL/2}" y="${y-RW/2}" width="${RL}" height="${RW}" fill="var(--card)" stroke="var(--ink)" stroke-width="${SW}"/>`
        + TX(x,y-14,label) + VAL(x,y+23,val);
 }
 /* vertical resistor: terminals (x,y-19) and (x,y+19) */
 function RESV(x,y,label,val){
-  return `<rect x="${x-RW/2}" y="${y-RL/2}" width="${RW}" height="${RL}" fill="var(--card)" stroke="var(--ink)" stroke-width="${SW}"/>`
+  return `<rect class="diagram-part" x="${x-RW/2}" y="${y-RL/2}" width="${RW}" height="${RL}" fill="var(--card)" stroke="var(--ink)" stroke-width="${SW}"/>`
+       + TX(x+14,y-3,label,"start") + VAL(x+14,y+12,val,"start");
+}
+/* compact vertical resistor, leaving visible lead wires inside tight rails */
+function RESVSHORT(x,y,label,val){
+  const h=26;
+  return `<rect class="diagram-part" x="${x-RW/2}" y="${y-h/2}" width="${RW}" height="${h}" fill="var(--card)" stroke="var(--ink)" stroke-width="${SW}"/>`
        + TX(x+14,y-3,label,"start") + VAL(x+14,y+12,val,"start");
 }
 /* vertical capacitor: terminals (x,y-4) and (x,y+4) */
 function CAPV(x,y,label,val){
-  return W([[x-13,y-4],[x+13,y-4]]) + W([[x-13,y+4],[x+13,y+4]])
+  return W([[x-13,y-4],[x+13,y-4]],true) + W([[x-13,y+4],[x+13,y+4]],true)
        + TX(x+19,y-4,label,"start") + VAL(x+19,y+11,val,"start");
 }
 /* horizontal capacitor: terminals (x-4,y) and (x+4,y) */
 function CAPH(x,y,label,val){
-  return W([[x-4,y-13],[x-4,y+13]]) + W([[x+4,y-13],[x+4,y+13]])
+  return W([[x-4,y-13],[x-4,y+13]],true) + W([[x+4,y-13],[x+4,y+13]],true)
        + TX(x,y-20,label) + VAL(x,y+28,val);
 }
 /* horizontal inductor: terminals (x-24,y) and (x+24,y) */
 function INDH(x,y,label,val){
   let d = "";
   for(let i=0;i<4;i++) d += `M ${x-24+i*12} ${y} a 6 6 0 0 1 12 0 `;
-  return `<path d="${d}" fill="none" stroke="var(--ink)" stroke-width="${SW}"/>`
+  return `<path class="diagram-part" d="${d}" fill="none" stroke="var(--ink)" stroke-width="${SW}"/>`
        + TX(x,y-13,label) + VAL(x,y+19,val);
 }
 function GND(x,y){
@@ -696,13 +799,13 @@ function BATTV(x,y,val){
 /* op-amp: IN- at (x,y-h/2), IN+ at (x,y+h/2), OUT at (x+w,y) */
 function OPAMP(x,y,h){
   const hh = h||30, w = hh*1.75;
-  return `<polygon points="${x},${y-hh} ${x},${y+hh} ${x+w},${y}" fill="var(--card)" stroke="var(--ink)" stroke-width="${SW}"/>`
+  return `<polygon class="diagram-part" points="${x},${y-hh} ${x},${y+hh} ${x+w},${y}" fill="var(--card)" stroke="var(--ink)" stroke-width="${SW}"/>`
        + TX(x+8,y-hh/2+5,"\u2212","start","var(--ink)",15)
        + TX(x+8,y+hh/2+5,"+","start","var(--ink)",14);
 }
 const OPO = h => (h||30)*1.75;                 /* output offset of an op-amp */
 function BOX(x,y,w,h,title,sub){
-  return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="var(--esd-soft)" stroke="var(--ink)" stroke-width="${SW}"/>`
+  return `<rect class="diagram-part" x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="var(--esd-soft)" stroke="var(--ink)" stroke-width="${SW}"/>`
        + TX(x+w/2,y+h/2+(sub?-2:4),title,"middle","var(--ink)",12)
        + (sub?TX(x+w/2,y+h/2+12,sub,"middle","var(--ink3)",10):"");
 }
@@ -711,11 +814,11 @@ function BOX(x,y,w,h,title,sub){
    DIOV_DOWN conducts downward, DIOV_UP conducts upward - a buck freewheel
    diode is the second kind, with its cathode on the switch node.            */
 function DIOV_DOWN(x,y){
-  return `<polygon points="${x-9},${y-8} ${x+9},${y-8} ${x},${y+8}" fill="var(--ink)"/>`
+  return `<polygon class="diagram-part diagram-diode" points="${x-9},${y-8} ${x+9},${y-8} ${x},${y+8}" fill="var(--ink)"/>`
        + W([[x-11,y+8],[x+11,y+8]]);
 }
 function DIOV_UP(x,y){
-  return `<polygon points="${x-9},${y+8} ${x+9},${y+8} ${x},${y-8}" fill="var(--ink)"/>`
+  return `<polygon class="diagram-part diagram-diode" points="${x-9},${y+8} ${x+9},${y+8} ${x},${y-8}" fill="var(--ink)"/>`
        + W([[x-11,y-8],[x+11,y-8]]);
 }
 const DIOV = DIOV_DOWN;
@@ -724,14 +827,14 @@ const DIOV = DIOV_DOWN;
    bar on top towards the positive rail, anode at the bottom to ground, and
    the bar's ends bent the opposite way from each other.                     */
 function ZENER(x,y){
-  return `<polygon points="${x-9},${y+8} ${x+9},${y+8} ${x},${y-8}" fill="var(--ink)"/>`
+  return `<polygon class="diagram-part diagram-diode" points="${x-9},${y+8} ${x+9},${y+8} ${x},${y-8}" fill="var(--ink)"/>`
        + W([[x-11,y-8],[x+11,y-8]])
        + W([[x-11,y-8],[x-16,y-13]])
        + W([[x+11,y-8],[x+16,y-3]]);
 }
 /* horizontal diode, current to the right: terminals (x-8,y) and (x+8,y) */
 function DIOH(x,y){
-  return `<polygon points="${x-8},${y-9} ${x-8},${y+9} ${x+8},${y}" fill="var(--ink)"/>` + W([[x+8,y-10],[x+8,y+10]]);
+  return `<polygon class="diagram-part diagram-diode" points="${x-8},${y-9} ${x-8},${y+9} ${x+8},${y}" fill="var(--ink)"/>` + W([[x+8,y-10],[x+8,y+10]]);
 }
 function LEDV(x,y){
   return DIOV(x,y)
@@ -739,19 +842,36 @@ function LEDV(x,y){
     + `<path d="M ${x+23} ${y-19} l -4.5 0.5 M ${x+23} ${y-19} l 0.5 4.5" stroke="var(--kapton)" stroke-width="1.6" fill="none"/>`
     + `<path d="M ${x+27} ${y-12} l -4.5 0.5 M ${x+27} ${y-12} l 0.5 4.5" stroke="var(--kapton)" stroke-width="1.6" fill="none"/>`;
 }
-/* N-channel enhancement MOSFET, drain up. Terminals: drain (x,y-30),
-   source (x,y+30), gate (x-30,y). The bulk arrow points into the channel and
-   ties to the source, which is what makes it an N channel rather than a P.  */
+/* Enhancement N-channel MOSFET, traced from the supplied reference symbol.
+   The arrow joins the body to the source lead and points into the channel.
+   Terminals: drain (x+13,y-33), source (x+13,y+33), gate (x-33,y). */
 function NFET(x,y){
-  return W([[x-30,y],[x-14,y]])                              /* gate lead   */
-       + W([[x-14,y-18],[x-14,y+18]])                        /* gate plate  */
-       + W([[x-6,y-18],[x-6,y-9]])                           /* channel     */
-       + W([[x-6,y-4],[x-6,y+4]])
-       + W([[x-6,y+9],[x-6,y+18]])
-       + W([[x-6,y-14],[x,y-14]]) + W([[x,y-14],[x,y-30]])   /* drain       */
-       + W([[x-6,y+14],[x,y+14]]) + W([[x,y+14],[x,y+30]])   /* source      */
-       + W([[x-6,y],[x,y]]) + W([[x,y],[x,y+14]])            /* bulk to src */
-       + `<polygon points="${x-6},${y} ${x+3},${y-5} ${x+3},${y+5}" fill="var(--ink)"/>`;
+  const channel=x, node=x+13, gate=x-7, body=x+20;
+  return W([[x-33,y],[gate,y]])                                /* gate lead */
+       + W([[gate,y-18],[gate,y+18]])                          /* gate plate */
+       + W([[channel,y-18],[channel,y-8]])                     /* broken channel */
+       + W([[channel,y-5],[channel,y+4]])
+       + W([[channel,y+8],[channel,y+18]])
+       + W([[node,y-33],[node,y-13],[channel,y-13]])           /* drain */
+       + W([[channel,y+13],[node,y+13],[node,y+33]])           /* source */
+       + DOT(node,y-13) + DOT(node,y+13)
+       + W([[node,y-13],[body,y-13],[body,y-3]])               /* body diode: cathode */
+       + `<polygon class="diagram-diode" points="${body},${y-3} ${body-3.3},${y+4} ${body+3.3},${y+4}" fill="var(--ink)"/>`
+       + W([[body-5,y-3],[body+5,y-3]])
+       + W([[body,y+4],[body,y+13],[node,y+13]])               /* body diode: anode */
+       + W([[channel+5,y],[channel+8,y],[channel+8,y+13]])    /* body lead */
+       + `<polygon class="diagram-arrow-head" points="${channel+1},${y} ${channel+6},${y-3.2} ${channel+6},${y+3.2}" fill="var(--ink)"/>`;
+}
+/* NPN transistor used as a low-side switch.  Its geometry follows the
+   supplied NPN reference: base bar at left, collector above, emitter below,
+   an enclosing device circle, and an emitter arrow pointing out. */
+function NPN(x,y){
+  const bx = x-12;
+  return `<circle cx="${x-1}" cy="${y}" r="27" fill="var(--paper)" stroke="var(--ink)" stroke-width="${SW}"/>`
+       + W([[x-32,y],[bx,y]]) + W([[bx,y-18],[bx,y+18]])
+       + W([[x,y-30],[x,y-15],[bx,y-7]])
+       + W([[x,y+30],[x,y+15],[bx,y+7]])
+       + `<polygon class="diagram-arrow-head" points="${x-7},${y+6} ${x+3},${y+16} ${x-8},${y+14}" fill="var(--ink)"/>`;
 }
 
 /* switch, terminals (x-16,y) and (x+16,y) */
@@ -759,17 +879,23 @@ function SWH(x,y,label){
   return W([[x-16,y],[x-6,y]]) + W([[x-6,y],[x+9,y-12]]) + W([[x+6,y],[x+16,y]])
        + DOT(x-6,y) + DOT(x+6,y) + TX(x,y+19,label);
 }
+/* Vertical switch, used by the low-side leg of a boost converter. */
+function SWV(x,y,label){
+  return W([[x,y-16],[x,y-6]]) + W([[x,y-6],[x+12,y+9]]) + W([[x,y+6],[x,y+16]])
+       + DOT(x,y-6) + DOT(x,y+6) + TX(x+24,y+4,label,"start");
+}
 function ARROW(x1,y1,x2,y2,label,color){
   const c = color||"var(--esd)";
   const a = Math.atan2(y2-y1,x2-x1), h = 6;
   const p = `${x2},${y2} ${x2-h*Math.cos(a-0.4)},${y2-h*Math.sin(a-0.4)} ${x2-h*Math.cos(a+0.4)},${y2-h*Math.sin(a+0.4)}`;
-  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="1.5"/>`
-       + `<polygon points="${p}" fill="${c}"/>`
+  return `<line class="diagram-wire" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="1.5"/>`
+       + `<polygon class="diagram-arrow-head" points="${p}" fill="${c}"/>`
        + (label?TX((x1+x2)/2,(y1+y2)/2-6,label,"middle",c,11):"");
 }
 function SVG(body, w, h){
-  return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg"
-    style="width:100%;max-width:${w}px;height:auto;display:block;margin:0 auto 4px">${body}</svg>`;
+  const max = Math.max(w,560);
+  return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Live circuit diagram"
+    style="width:100%;max-width:${max}px;height:auto;display:block;margin:0 auto 4px"><rect class="diagram-canvas" x=".5" y=".5" width="${w-1}" height="${h-1}" rx="2"/><g class="diagram-content">${body}</g></svg>`;
 }
 const vv = (raw,k,d)=> (raw && String(raw[k]||"").trim()) ? String(raw[k]).trim() : (d||"");
 /* a computed result, so the drawing can label what the calculator worked out */
@@ -795,14 +921,6 @@ ohm: (r,o) => SVG(
   W([[300,45],[300,76]]) + RESV(300,95,"R",vv(r,"R",got(o,"Resistance"))) + W([[300,114],[300,145]]) +
   ARROW(150,45,215,45, vv(r,"I", got(o,"Current"))) +
   TX(185,120,"P = V \u00d7 I = "+gotv(o,"Power"),"middle","var(--ink3)",11), 380, 175),
-
-divider: (r,o) => SVG(
-  W([[120,28],[120,65]]) + NODE(120,20,"Vin") + VAL(152,24,vv(r,"Vin",""),"start") +
-  RESV(120,84,"R1",vv(r,"R1","")) +
-  W([[120,103],[120,127]]) + DOT(120,115) +
-  W([[120,115],[248,115]]) + NODE(288,111,"Vout") + VAL(288,128, got(o,"Output")||got(o,"Output with E24")) +
-  RESV(120,146,"R2",vv(r,"R2", got(o,"Nearest E24"))) +
-  W([[120,165],[120,178]]) + GND(120,178), 380, 208),
 
 led: (r,o) => SVG(
   W([[120,32],[120,65]]) + NODE(120,24,"Vs") + VAL(152,28,vv(r,"Vs",""),"start") +
@@ -855,8 +973,8 @@ opdiff: (r,o) => SVG(
   W([[135,135],[135,171]]) + RESV(135,190,"R2",vv(r,"R2","")) +
   W([[135,209],[135,222]]) + GND(135,222) +
   OPAMP(170,110,50) + W([[257,110],[350,110]]) + DOT(310,110) + NODE(388,114,"out","end") +
-  TX(250,160,"Vout = R2/R1 \u00d7 (V2 \u2212 V1)","middle","var(--ink3)",11) +
-  TX(250,176,got(o,"Output"),"middle","var(--kapton)",11.5), 400, 250),
+  TX(250,190,"Vout = R2/R1 \u00d7 (V2 \u2212 V1)","middle","var(--ink3)",11) +
+  TX(250,212,got(o,"Output"),"middle","var(--kapton)",11.5), 400, 260),
 
 reg: (r,o) => SVG(
   W([[24,60],[90,60]]) + NODE(24,50,"IN") +
@@ -886,20 +1004,22 @@ buck: (r,o) => SVG(
   DOT(300,50) + NODE(368,54,"Vout","end") + VAL(330,36,vv(r,"Vout",""),"middle") +
   W([[180,50],[180,92]]) + DIOV_UP(180,100) + W([[180,108],[180,142]]) +
   W([[300,50],[300,96]]) + CAPV(300,100,"Cout",vv(r,"Cout","")) + W([[300,104],[300,142]]) +
-  W([[60,50],[60,142]]) + W([[60,142],[300,142]]) + GND(180,142) +
-  TX(220,182,"D = Vout / Vin = "+gotv(o,"Duty cycle"),"middle","var(--ink3)",11), 400, 196),
+  W([[20,142],[300,142]]) + NODE(20,132,"Vin−","start") + GND(180,142) +
+  TX(220,180,"D = Vout / Vin = "+gotv(o,"Duty cycle"),"middle","var(--ink3)",11) +
+  TX(220,202,"ΔIL = "+gotv(o,"Inductor ripple \u0394IL")+"  ·  ΔVout = "+gotv(o,"Estimated output ripple"),
+     "middle","var(--kapton)",11.5), 400, 220),
 
 boost: (r,o) => SVG(
-  W([[20,50],[62,50]]) + NODE(20,40,"Vin") + VAL(48,36,vv(r,"Vin",""),"middle") +
+  W([[20,50],[86,50]]) + NODE(20,40,"Vin") + VAL(48,36,vv(r,"Vin",""),"middle") +
   INDH(110,50,"L",vv(r,"L","")) + W([[134,50],[180,50]]) + DOT(180,50) +
   W([[180,50],[224,50]]) + DIOH(232,50) + W([[240,50],[330,50]]) +
   DOT(300,50) + NODE(368,54,"Vout","end") + VAL(330,36,vv(r,"Vout",""),"middle") +
-  W([[180,50],[180,66]]) + NFET(180,96) + W([[180,126],[180,142]]) +
-  TX(146,100,"gate","end","var(--esd)",11) +
-  TX(196,84,vv(r,"f","")+" Hz","start","var(--ink3)",10) +
+  W([[180,50],[180,68]]) + SWV(180,84,"switch") + W([[180,100],[180,142]]) +
   W([[300,50],[300,96]]) + CAPV(300,100,"Cout",vv(r,"Cout","")) + W([[300,104],[300,142]]) +
-  W([[62,50],[62,142]]) + W([[62,142],[300,142]]) + GND(180,142) +
-  TX(220,182,"D = 1 \u2212 Vin / Vout = "+gotv(o,"Duty cycle"),"middle","var(--ink3)",11), 400, 196),
+  W([[20,142],[300,142]]) + NODE(20,132,"Vin−","start") + GND(180,142) +
+  TX(220,180,"D = 1 \u2212 Vin / Vout = "+gotv(o,"Duty cycle"),"middle","var(--ink3)",11) +
+  TX(220,202,"ΔIL = "+gotv(o,"Inductor ripple \u0394IL")+"  ·  ΔVout = "+gotv(o,"Estimated output ripple"),
+     "middle","var(--kapton)",11.5), 400, 220),
 
 shunt: (r,o) => SVG(
   ARROW(16,50,72,50, vv(r,"I","I")) + W([[72,50],[81,50]]) +
@@ -913,16 +1033,17 @@ shunt: (r,o) => SVG(
   TX(150,158,"Vsense "+got(o,"Shunt voltage")+" \u00b7 full scale "+got(o,"Full scale current"),"middle","var(--ink3)",11), 400, 178),
 
 trace: (r,o) => SVG(
-  `<rect x="60" y="98" width="300" height="46" fill="var(--rule2)" stroke="var(--ink)" stroke-width="${SW}"/>` +
-  TX(210,128,"FR-4","middle","var(--ink3)",11) +
-  `<rect x="150" y="76" width="120" height="22" fill="var(--kapton-soft)" stroke="var(--kapton)" stroke-width="2"/>` +
-  TX(210,92,"copper","middle","var(--kapton)",11) +
-  ARROW(210,62,150,62,"") + ARROW(210,62,270,62,"") +
-  TX(210,52, got(o,"External layer") || "width","middle","var(--kapton)",12) +
-  W([[276,76],[300,76]]) + W([[276,98],[300,98]]) + ARROW(294,76,294,98,"") +
-  TX(308,91,vv(r,"oz","1")+" oz","start","var(--kapton)",11) +
-  ARROW(110,76,110,42,"") + TX(102,38,"\u0394T "+vv(r,"dT","")+" \u00b0C","end","var(--alert)",11) +
-  TX(210,170,"IPC-2221 \u00b7 an internal layer needs "+(got(o,"Internal layer")||"more"),"middle","var(--ink3)",11), 400, 185),
+  TX(200,28,vv(r,"layer","External")+" layer \u00b7 "+vv(r,"oz","1")+" oz copper","middle","var(--ink3)",11) +
+  ARROW(48,46,352,46,vv(r,"I","I")) +
+  W([[28,64],[62,64]]) + `<rect class="diagram-part" x="62" y="57" width="276" height="14" fill="var(--kapton-soft)" stroke="var(--ink)" stroke-width="${SW}"/>` + W([[338,64],[372,64]]) +
+  NODE(28,86,"SOURCE","start") + NODE(372,86,"LOAD","end") +
+  TX(200,91,"selected trace = "+vv(r,"width","1")+" mm","middle","var(--kapton)",11) +
+  `<rect class="diagram-part" x="62" y="108" width="276" height="30" fill="var(--rule2)" stroke="var(--ink)" stroke-width="${SW}"/>` +
+  TX(200,127,"PCB substrate","middle","var(--ink3)",11) +
+  TX(200,164,"minimum width = "+gotv(o,"Calculated minimum trace width")+"  ·  recommended = "+gotv(o,"Recommended trace width"),"middle","var(--ink3)",10.5) +
+  TX(200,187,"\u0394T trace = "+gotv(o,"Trace temperature rise")+"  ·  trace drop = "+gotv(o,"Trace voltage drop"),"middle","var(--kapton)",11) +
+  TX(200,209,"Rtrace = "+gotv(o,"Trace resistance")+"  ·  loss = "+gotv(o,"Trace dissipation"),"middle","var(--ink3)",10.5),
+  400, 226),
 
 batt: (r,o) => SVG(
   BATTV(90,90, vv(r,"cap","")+" Ah") +
@@ -932,6 +1053,68 @@ batt: (r,o) => SVG(
   ARROW(150,40,220,40, vv(r,"I","I")) +
   TX(190,172,"runtime "+got(o,"Runtime"),"middle","var(--ink3)",11), 400, 190)
 };
+
+/* ---- diagrams for the added bench calculators -------------------------- */
+DIAGRAMS.divider = (r,o) => {
+  const useLoad = r.useLoad!==false && r.useLoad!=="false";
+  const vOut = useLoad ? (got(o,"Loaded output")||got(o,"Open-circuit output")) : got(o,"Open-circuit output");
+  return SVG(
+    W([[125,28],[125,65]]) + NODE(125,20,"Vin") + VAL(155,24,vv(r,"Vin",""),"start") +
+    RESV(125,84,"R1",vv(r,"R1","")) + W([[125,103],[125,165]]) + DOT(125,134) +
+    W([[125,134],[270,134]]) + DOT(210,134) + DOT(270,134) + NODE(270,110,"Vout") + VAL(270,127,vOut) +
+    RESV(125,184,"R2",vv(r,"R2","")) + W([[125,203],[125,218]]) + GND(125,218) +
+    (useLoad
+      ? W([[210,134],[210,151]]) + RESV(210,170,"RL",vv(r,"RL","")) + W([[210,189],[210,218]]) + GND(210,218) +
+        ARROW(335,152,335,188,got(o,"Load current"))
+      : TX(270,170,"RL disconnected","middle","var(--ink3)",10.5)) +
+    TX(210,260,"open-circuit = "+gotv(o,"Open-circuit output"),"middle","var(--ink3)",11) +
+    (useLoad
+      ? TX(210,279,"loaded = "+gotv(o,"Loaded output"),"middle","var(--kapton)",11.5)
+      : TX(210,279,"load disabled — Vout is open-circuit","middle","var(--kapton)",11.5)), 400, 296);
+};
+
+DIAGRAMS.adc = (r,o) => SVG(
+  W([[20,70],[61,70]]) + NODE(20,60,"signal") + VAL(48,58,vv(r,"Vsig",""),"middle") +
+  RESH(80,70,"Rtop",got(o,"Safe E24 Rtop")||got(o,"Rtop needed")) + W([[99,70],[135,70]]) + DOT(135,70) +
+  W([[135,70],[135,81]]) + RESV(135,100,"Rbot",vv(r,"Rbot","")) + W([[135,119],[135,136]]) + GND(135,136) +
+  W([[135,70],[176,70]]) + RESH(195,70,"Rs",vv(r,"Rsrc","")) + W([[214,70],[260,70]]) + DOT(260,70) +
+  W([[260,70],[260,96]]) + W([[247,96],[273,96]],true) + W([[247,104],[273,104]],true) +
+  TX(279,116,"C","start") + VAL(279,131,vv(r,"C",""),"start") + W([[260,104],[260,136]]) + GND(260,136) +
+  W([[260,70],[280,70]]) + BOX(280,46,88,48,"ADC",vv(r,"bits","")+" bit") +
+  TX(136,166,"ADC max = "+gotv(o,"Actual ADC maximum"),"middle","var(--ink3)",11) +
+  TX(292,166,"fc = "+gotv(o,"Filter cut-off"),"middle","var(--ink3)",11) +
+  TX(200,188,"½ LSB settle = "+gotv(o,"½ LSB settling time"),"middle","var(--kapton)",11.5) +
+  TX(200,210,"budget = ±"+gotv(o,"Conservative total uncertainty")+"  ·  "+gotv(o,"Resolution after error budget")+" effective", "middle","var(--ink3)",10.5), 400, 230);
+
+DIAGRAMS.bjt = (r,o) => SVG(
+  W([[20,140],[71,140]]) + NODE(20,118,"GPIO","start") + VAL(20,132,vv(r,"Vdrive",""),"start") +
+  RESH(90,140,"Rb",got(o,"E24 base resistor")||got(o,"Maximum base resistance")) + W([[109,140],[190,140]]) +
+  NPN(220,140) + W([[220,110],[220,108]]) + W([[220,108],[220,74]]) +
+  BOX(185,38,70,36,"LOAD",vv(r,"Ic","")) + W([[220,38],[220,26]]) + NODE(220,18,"Vload") +
+  W([[220,170],[220,184]]) + GND(220,184) +
+  TX(196,134,"B","end","var(--ink3)",9) + TX(240,120,"C","start","var(--ink3)",9) +
+  TX(240,170,"E","start","var(--ink3)",9) +
+  TX(90,182,"Ib = "+gotv(o,"Actual base current"),"middle","var(--esd)",10.5) +
+  TX(220,218,"β forced = "+gotv(o,"Forced beta with E24"),"middle","var(--ink3)",11) +
+  TX(220,240,"transistor loss = "+gotv(o,"Transistor dissipation"),"middle","var(--kapton)",11.5), 400, 256);
+
+DIAGRAMS.rectifier = (r,o) => SVG(
+  `<path d="M 22 104 q 10 -20 20 0 q 10 20 20 0" fill="none" stroke="var(--esd)" stroke-width="1.8"/>` +
+  NODE(42,138,"AC") + VAL(42,154,vv(r,"Vac",""),"middle") +
+  W([[62,94],[88,94]]) + W([[62,114],[88,114]]) + BOX(88,72,82,64,"BRIDGE","") +
+  W([[170,84],[330,84]]) + W([[170,124],[330,124]]) + NODE(350,88,"+DC","end") +
+  CAPV(240,104,"C",vv(r,"C","")) + W([[240,84],[240,100]]) + W([[240,108],[240,124]]) +
+  W([[300,84],[300,91]]) + RESVSHORT(300,104,"Rload",got(o,"Equivalent load resistance")) + W([[300,117],[300,124]]) +
+  TX(110,166,"Vpeak = "+gotv(o,"Peak after bridge"),"middle","var(--ink3)",11) +
+  TX(290,166,"ripple = "+gotv(o,"Ripple with selected C"),"middle","var(--ink3)",11) +
+  TX(110,188,"Vmin = "+gotv(o,"Minimum DC voltage"),"middle","var(--kapton)",11.5) +
+  TX(290,188,"C needed = "+gotv(o,"Next E24 capacitance"),"middle","var(--kapton)",11.5) +
+  TX(110,212,"Icap RMS ≈ "+gotv(o,"Estimated capacitor ripple current"),"middle","var(--ink3)",11) +
+  TX(290,212,"ΔTcap ≈ "+gotv(o,"Estimated capacitor temperature rise"),"middle","var(--ink3)",11) +
+  TX(110,236,"transformer ≥ "+gotv(o,"Suggested transformer rating"),"middle","var(--kapton)",11) +
+  TX(290,236,"Pbridge = "+gotv(o,"Bridge dissipation"),"middle","var(--kapton)",11) +
+  TX(110,258,"inrush ≈ "+gotv(o,"Estimated switch-on inrush"),"middle","var(--ink3)",10.5) +
+  TX(290,258,"Tbridge ≈ "+gotv(o,"Estimated bridge temperature"),"middle","var(--ink3)",10.5), 400, 278);
 
 /* ----------------------------------------------------- component decoding -
    Colour bands, SMD codes and the E-series behind them.                     */
@@ -1155,6 +1338,40 @@ const NEW_CALCS = [
      out.push(R("Worst case, no load",(Vin-Vz)/Rs*Vz,"W","what the zener sees if the load disconnects"));
    }
    return out;
+ }},
+
+{id:"opspeed", group:"Op-amps", name:"Op-amp bandwidth & slew rate",
+ note:"Checks the two speed limits separately: small-signal bandwidth comes from GBW divided by closed-loop noise gain, while large-signal sine waves need adequate slew rate.",
+ fields:[F("gain","Closed-loop noise gain","×","10"),F("f","Highest sine frequency","Hz","100k"),
+         F("Vpp","Maximum output swing","V","5"),F("tr","Required 10–90 % step rise time (optional)","s","1u"),
+         F("margin","GBW margin","×","5"),F("gbw","Candidate GBW (optional)","Hz","10M"),
+         F("sr","Candidate slew rate (optional)","V/µs","10")],
+ run(v){
+   const {gain,f,Vpp,tr,margin,gbw,sr} = v;
+   if(!isFinite(gain)||!isFinite(f)||!isFinite(Vpp)||!isFinite(margin)||
+      gain<=0||f<=0||Vpp<=0||margin<1) return null;
+   const closedLoopBW=f*margin, gbwSine=gain*closedLoopBW;
+   const stepBW=isFinite(tr)&&tr>0 ? 0.35/tr : NaN;
+   const gbwStep=isFinite(stepBW) ? gain*stepBW*margin : 0;
+   const gbwNeed=Math.max(gbwSine,gbwStep);
+   const srSine=Math.PI*f*Vpp/1e6;
+   const srStep=isFinite(tr)&&tr>0 ? 0.8*Vpp/tr/1e6 : 0;
+   const srNeed=Math.max(srSine,srStep);
+   const out=[R("Required closed-loop bandwidth",closedLoopBW,"Hz",margin+"× above the highest sine frequency"),
+              R("GBW needed for sine response",gbwSine,"Hz","closed-loop noise gain × bandwidth"),
+              R("GBW needed for step response",gbwStep,"Hz",isFinite(stepBW)?"from 0.35 ÷ rise time":"no rise-time target entered"),
+              R("Recommended GBW",gbwNeed,"Hz"),R("Sine slew rate needed",srSine,"V/µs","π × frequency × output Vpp"),
+              R("Step slew rate needed",srStep,"V/µs",isFinite(tr)&&tr>0?"0.8 × Vpp ÷ 10–90 % rise time":"no rise-time target entered"),
+              R("Required slew rate",srNeed,"V/µs")];
+   const gbwOK=!isFinite(gbw)||gbw<=0 || gbw>=gbwNeed;
+   const srOK=!isFinite(sr)||sr<=0 || sr>=srNeed;
+   if(isFinite(gbw)&&gbw>0) out.push(R("Candidate closed-loop bandwidth",gbw/gain,"Hz"),
+                                      R("GBW margin",gbw/gbwNeed,"×",gbwOK?"meets the entered target":"below the entered target"));
+   if(isFinite(sr)&&sr>0) out.push(R("Candidate full-power bandwidth",sr*1e6/(Math.PI*Vpp),"Hz"),
+                                    R("Slew-rate margin",sr/srNeed,"×",srOK?"meets the calculated limit":"slew-rate limited"));
+   if((isFinite(gbw)&&gbw>0)||(isFinite(sr)&&sr>0))
+     out.push(R("Speed verdict",null,"",(gbwOK&&srOK)?"candidate meets both bandwidth and slew-rate targets":"candidate does not meet all entered speed targets"));
+   return out;
  }}
 ];
 
@@ -1194,7 +1411,7 @@ DIAGRAMS.rcolor = (r,o) => {
   return SVG(
     BANDED(200,84,bands,tol,tc) +
     TX(200,26, got(o,"Value")||"", "middle","var(--kapton)",17) +
-    TX(200,46, got(o,"Tolerance")?("\u00b1"+got(o,"Tolerance")):"", "middle","var(--ink2)",11) +
+    TX(200,46, TOLS[tol]!==undefined?("\u00b1"+TOLS[tol]+"%"):"", "middle","var(--ink2)",11) +
     TX(200,140, bands.concat(tol?[tol]:[]).concat(tc?[tc]:[]).join(" \u00b7 "), "middle","var(--ink3)",11) +
     TX(200,158, n+" bands \u00b7 the tolerance band sits apart at the far end","middle","var(--ink3)",10),
     400, 172);
@@ -1246,8 +1463,8 @@ DIAGRAMS.react = (r,o) => SVG(
   CAPH(140,96,"C",vv(r,"C","")) + W([[144,96],[188,96]]) +
   INDH(212,96,"L",vv(r,"L","")) + W([[236,96],[290,96]]) +
   (isFinite(parseSI(r.Rs)) ? RESH(310,96,"Rs",vv(r,"Rs","")) + W([[329,96],[366,96]]) : W([[290,96],[366,96]])) +
-  TX(140,44, got(o,"Xc")?("Xc "+got(o,"Xc")):"", "middle","var(--kapton)",12) +
-  TX(212,44, got(o,"XL")?("XL "+got(o,"XL")):"", "middle","var(--kapton)",12) +
+  TX(132,44, got(o,"Xc")?("Xc "+got(o,"Xc")):"", "middle","var(--kapton)",12) +
+  TX(264,44, got(o,"XL")?("XL "+got(o,"XL")):"", "middle","var(--kapton)",12) +
   TX(200,164, [got(o,"Impedance")&&("Z "+got(o,"Impedance")),
                got(o,"Phase")&&("\u2220 "+got(o,"Phase")),
                got(o,"Resonates at")&&("f0 "+got(o,"Resonates at"))].filter(Boolean).join("  \u00b7  "),
@@ -1257,14 +1474,14 @@ DIAGRAMS.react = (r,o) => SVG(
 DIAGRAMS.zener = (r,o) => SVG(
   W([[24,50],[81,50]]) + NODE(24,40,"Vin") + VAL(56,40,vv(r,"Vin",""),"middle") +
   RESH(100,50,"Rs",vv(r,"Rs", got(o,"Nearest E24"))) +
-  W([[119,50],[300,50]]) + DOT(200,50) + NODE(336,54,"Vout","end") +
+  W([[119,50],[344,50]]) + DOT(200,50) + NODE(386,54,"Vout","end") +
   ARROW(140,32,182,32, got(o,"Total current through Rs")) +
   /* reverse biased: cathode bar up to the rail, anode down to ground */
   W([[200,50],[200,92]]) + ZENER(200,100) + W([[200,108],[200,150]]) + GND(200,150) +
   VAL(224,96,vv(r,"Vz","Vz"),"start") +
   TX(224,112, got(o,"Current in the zener"),"start","var(--esd)",11) +
-  W([[300,50],[300,76]]) + BOX(266,76,68,44,"LOAD",vv(r,"Il","")) + W([[300,120],[300,150]]) +
-  W([[200,150],[300,150]]) +
+  W([[344,50],[344,76]]) + BOX(310,76,68,44,"LOAD",vv(r,"Il","")) + W([[344,120],[344,150]]) +
+  W([[200,150],[344,150]]) +
   TX(200,182,[got(o,"Zener dissipation")&&("zener "+got(o,"Zener dissipation")),
               got(o,"Rs dissipation")&&("Rs "+got(o,"Rs dissipation"))].filter(Boolean).join("  \u00b7  "),
      "middle","var(--ink3)",11),
@@ -1413,15 +1630,18 @@ const WIRE_CALCS = [
 
 const POWER_CALCS = [
 
-{id:"fet", group:"Power", name:"MOSFET losses",
- note:"Conduction, switching and gate charge. Rds(on) rises with temperature \u2014 the datasheet figure at 25 \u00b0C is optimistic by roughly 1.4\u00d7 at 100 \u00b0C.",
+{id:"fet", group:"Power", name:"MOSFET gate drive & losses",
+ note:"Conduction and switching losses plus a first-pass gate-drive check. The Miller estimate uses QGD and the total gate resistance; verify it against the device switching curves and the actual driver.",
  fields:[F("Vds","Switched voltage","V","400"),F("Id","Drain current","A","2"),
          F("D","Duty cycle","%","40"),F("f","Switching frequency","Hz","65k"),
          F("Rds","Rds(on)","Ω","0.3"),F("tsw","Rise + fall time","s","60n"),
          F("Qg","Gate charge","C","20n"),F("Vg","Gate drive","V","12"),
-         F("Rja","θJA or θJC + heatsink","°C/W","62"),F("Ta","Ambient","°C","40")],
+         F("Rja","θJA or θJC + heatsink","°C/W","62"),F("Ta","Ambient","°C","40"),
+         F("Qgd","Miller gate charge QGD","C","8n","8n",true),F("Vplateau","Miller plateau voltage","V","5","5"),
+         F("Rg","External gate resistor","Ω","10","10"),F("Rdrv","Driver source/sink resistance","Ω","2","2"),
+         F("Rgi","MOSFET internal gate resistance","Ω","1","1")],
  run(v){
-   const {Vds,Id,D,f,Rds,tsw,Qg,Vg,Rja,Ta} = v;
+   const {Vds,Id,D,f,Rds,tsw,Qg,Vg,Rja,Ta,Qgd,Vplateau,Rg,Rdrv,Rgi} = v;
    if(!isFinite(Id)||!isFinite(Rds)) return null;
    const d = isFinite(D) ? D/100 : 1;
    const pc = Id*Id*Rds*d;
@@ -1434,7 +1654,23 @@ const POWER_CALCS = [
    }
    if(isFinite(Qg)&&isFinite(Vg)&&isFinite(f)){
      pg = Qg*Vg*f;
-     out.push(R("Gate drive loss",pg,"W","paid by the driver, not the FET"));
+     out.push(R("Gate-driver average current",Qg*f,"A","Qg × switching frequency"),
+              R("Gate drive loss",pg,"W","paid by the driver, not the FET"));
+   }
+   if(isFinite(Qgd)&&isFinite(Vplateau)&&isFinite(Vg)&&isFinite(Rg)&&isFinite(Rdrv)&&isFinite(Rgi) &&
+      Qgd>0&&Rg>=0&&Rdrv>=0&&Rgi>=0&&Vg>Vplateau){
+     const rGate=Rg+Rdrv+Rgi, iPeak=Vg/rGate, iMiller=(Vg-Vplateau)/rGate;
+     const tMiller=Qgd/iMiller, tEstimated=2*tMiller;
+     out.push(R("Total gate resistance",rGate,"Ω","external resistor + driver + MOSFET internal resistance"),
+              R("Peak gate current",iPeak,"A","at the beginning of the gate-charge pulse"),
+              R("Miller plateau current",iMiller,"A","sets the drain-voltage transition speed"),
+              R("Estimated Miller time",tMiller,"s","QGD ÷ Miller plateau current"),
+              R("Estimated rise + fall time",tEstimated,"s","two Miller transitions"));
+     if(isFinite(Vds)&&isFinite(Id)&&isFinite(f))
+       out.push(R("Miller-estimated switching loss",Vds*Id*tMiller*f,"W",
+         "VDS × ID × Miller time × switching frequency"));
+   }else if(isFinite(Vg)&&isFinite(Vplateau)&&Vg<=Vplateau){
+     out.push(R("Gate-drive warning",null,"","gate drive must be higher than the Miller plateau voltage"));
    }
    const tot = pc*1.4 + ps;
    out.push(R("Total in the FET",tot,"W","hot conduction plus switching"));
@@ -1500,17 +1736,19 @@ DIAGRAMS.cable = (r,o) => SVG(
   400, 182);
 
 DIAGRAMS.fet = (r,o) => SVG(
-  W([[60,40],[240,40]]) + NODE(40,44,"Vds","end") + VAL(150,32,vv(r,"Vds",""),"middle") +
-  W([[240,40],[240,60]]) + NFET(240,90) + W([[240,120],[240,146]]) + GND(240,146) +
-  TX(206,94,"gate","end","var(--esd)",11) +
-  VAL(256,72,vv(r,"Rds","")+" \u03a9","start") +
-  TX(256,88,vv(r,"f","")+" Hz","start","var(--ink3)",11) +
-  ARROW(120,40,180,40, vv(r,"Id","")+" A") +
-  TX(140,140,"conduction "+(got(o,"Conduction loss")||"\u2014"),"middle","var(--ink3)",11) +
-  TX(140,158,"switching "+(got(o,"Switching loss")||"\u2014"),"middle","var(--ink3)",11) +
-  TX(140,178,"total "+(got(o,"Total in the FET")||"\u2014")+
-             "  \u00b7  Tj "+(got(o,"Junction temperature")||"\u2014"),"middle","var(--kapton)",12),
-  400, 192);
+  NODE(250,18,"Vbus") + VAL(290,22,vv(r,"Vds",""),"start") + W([[250,28],[250,44]]) +
+  BOX(210,44,80,36,"LOAD",vv(r,"Id","")+" A") + W([[250,80],[255,80],[255,102]]) +
+  NFET(242,135) + W([[255,168],[250,168],[250,190]]) + GND(250,190) +
+  W([[136,135],[161,135]]) + RESH(180,135,"Rg",vv(r,"Rg","")) + W([[199,135],[209,135]]) +
+  NODE(130,125,"driver","end") + VAL(130,153,vv(r,"Vg","")+" V","end") +
+  VAL(304,112,vv(r,"Rds","")+" \u03a9","start") + TX(304,128,vv(r,"f","")+" Hz","start","var(--ink3)",11) +
+  ARROW(370,95,370,182,"","var(--esd)") +
+  TX(150,232,"conduction = "+(got(o,"Conduction loss")||"\u2014"),"middle","var(--ink3)",11) +
+  TX(150,250,"switching = "+(got(o,"Switching loss")||"\u2014"),"middle","var(--ink3)",11) +
+  TX(275,250,"Miller = "+(got(o,"Estimated Miller time")||"\u2014"),"middle","var(--ink3)",10.5) +
+  TX(200,274,"total = "+(got(o,"Total in the FET")||"\u2014")+
+             "  \u00b7  Tj = "+(got(o,"Junction temperature")||"\u2014"),"middle","var(--kapton)",12),
+  400, 290);
 
 DIAGRAMS.heatsink = (r,o) => {
   const stage = (x,label,val,col)=>
@@ -1589,6 +1827,18 @@ DIAGRAMS.hyst = (r,o) => {
   return SVG(g, 400, 316);
 };
 
+DIAGRAMS.opspeed = (r,o) => SVG(
+  `<polygon class="diagram-part" points="164,58 164,142 252,100" fill="var(--esd-soft)" stroke="var(--ink)" stroke-width="${SW}"/>` +
+  W([[36,80],[164,80]]) + W([[252,100],[366,100]]) +
+  `<path d="M 48 80 q 8 -15 16 0 q 8 15 16 0 q 8 -15 16 0" fill="none" stroke="var(--esd)" stroke-width="1.5"/>` +
+  TX(174,86,"+","middle","var(--ink3)",12) + TX(174,122,"−","middle","var(--ink3)",12) +
+  W([[276,100],[276,42],[132,42],[132,122],[164,122]]) +
+  NODE(36,66,"Vin","start") + NODE(366,86,"Vout","end") +
+  TX(207,104,"A","middle","var(--ink)",12) +
+  TX(200,166,"GBW needed = "+gotv(o,"Recommended GBW")+"  ·  SR needed = "+gotv(o,"Required slew rate"),"middle","var(--kapton)",11) +
+  TX(200,188,"candidate BW = "+gotv(o,"Candidate closed-loop bandwidth")+"  ·  full-power = "+gotv(o,"Candidate full-power bandwidth"),"middle","var(--ink3)",10.5),
+  400, 208);
+
 const AMP_CALCS = [
 
 {id:"hyst", group:"Op-amps", name:"Comparator with hysteresis",
@@ -1648,7 +1898,172 @@ const AMP_CALCS = [
  }}
 ];
 
-NEW_CALCS.concat(WIRE_CALCS, POWER_CALCS, AMP_CALCS).forEach(c=>CALCS.push(c));
+/* These are the short calculations that tend to be done at the bench before
+   a value is committed to a schematic. Each one deliberately reports the
+   practical limit as well as the ideal number.                             */
+const EXTRA_CALCS = [
+
+{id:"divider", group:"Basics", name:"Voltage divider",
+ note:"A divider is a voltage source with resistance. Connect a load and the lower leg becomes R2 ∥ RL, so the output is lower than the unloaded calculation.",
+ fields:[F("Vin","Input voltage","V","12"),F("R1","Upper resistor R1","Ω","10k"),
+         F("R2","Lower resistor R2","Ω","4.7k"),FC("useLoad","Connect load RL",true),
+         {...F("RL","Load resistance","Ω","10k"),showWhen:"useLoad"}],
+ run(v){
+   const {Vin,R1,R2,RL,useLoad} = v;
+   if(!isFinite(Vin)||!isFinite(R1)||!isFinite(R2)||R1<=0||R2<=0) return null;
+   const vOpen = Vin*R2/(R1+R2), rth = R1*R2/(R1+R2);
+   const out = [R("Open-circuit output",vOpen,"V"),
+                R("Thevenin resistance",rth,"Ω","the output impedance seen by a load")];
+   if(!useLoad){
+     out.push(R("Load status",null,"","RL is disconnected — Vout is the open-circuit voltage"));
+     return out;
+   }
+   if(!isFinite(RL)||RL<=0){
+     out.push(R("Loaded output",null,"","enter a positive RL to see the loaded voltage"));
+     return out;
+   }
+   const rb = R2*RL/(R2+RL), vLoad = Vin*rb/(R1+rb), iLoad = vLoad/RL;
+   const iIn = Vin/(R1+rb), drop = vOpen-vLoad;
+   out.push(R("Loaded output",vLoad,"V"),R("Output drop",drop,"V",(100*drop/vOpen).toFixed(1)+" % below the open-circuit value"),
+            R("Load current",iLoad,"A"),R("Divider input current",iIn,"A"),
+            R("R1 dissipation",iIn*iIn*R1,"W"),R("R2 dissipation",vLoad*vLoad/R2,"W"),
+            R("Load dissipation",vLoad*vLoad/RL,"W"));
+   return out;
+ }},
+
+{id:"adc", group:"Measurement", name:"ADC input front-end",
+ note:"Sizes a safe divider for a signal above the ADC reference, then checks filtering, settling and a first-pass ADC error budget. The uncertainty budget combines stated static errors with 3σ random noise.",
+ fields:[F("Vsig","Maximum signal","V","12"),F("Vref","ADC reference / full scale","V","3.3"),
+         F("bits","ADC resolution","bit","12"),F("Rbot","Chosen lower divider resistor","Ω","10k"),
+         F("Rsrc","Source + series resistance","Ω","1k"),F("C","ADC filter capacitor","F","10n"),
+         F("fs","Sample rate","Hz","10k"),F("Vfault","Possible fault voltage","V","24"),
+         F("Iclamp","Allowed clamp current","A","1m"),
+         F("VrefErr","Reference initial error","%","0.1","0.1",true),F("VrefTC","Reference temperature coefficient","ppm/°C","10","10"),
+         F("Tspan","Temperature excursion","°C","30","30"),F("divErr","Divider ratio error","%","0.1","0.1"),
+         F("offset","ADC offset error","LSB","0.5","0.5"),F("inl","ADC INL error","LSB","1","1"),
+         F("noise","Input-referred noise (RMS)","V","100u","100u")],
+ run(v){
+   const {Vsig,Vref,bits,Rbot,Rsrc,C,fs,Vfault,Iclamp,VrefErr,VrefTC,Tspan,divErr,offset,inl,noise} = v;
+   if(!isFinite(Vsig)||!isFinite(Vref)||!isFinite(Rbot)||!isFinite(Rsrc)||!isFinite(C)||
+      !isFinite(VrefErr)||!isFinite(VrefTC)||!isFinite(Tspan)||!isFinite(divErr)||!isFinite(offset)||!isFinite(inl)||!isFinite(noise)||
+      Vsig<=0||Vref<=0||Rbot<=0||Rsrc<0||C<=0||VrefErr<0||VrefTC<0||Tspan<0||divErr<0||offset<0||inl<0||noise<0) return null;
+   const rNeed = Math.max(0,Rbot*(Vsig/Vref-1));
+   const rTop = rNeed>0 ? e24AtLeast(rNeed) : 0;
+   const vAdc = rTop>0 ? Vsig*Rbot/(rTop+Rbot) : Vsig;
+   const rth = rTop>0 ? rTop*Rbot/(rTop+Rbot) : 0;
+   const rDrive = Rsrc+rth, fc=1/(2*Math.PI*rDrive*C);
+   const n = Math.max(1,Math.round(bits||10));
+   const tSettle = (n+1)*Math.LN2*rDrive*C;
+   const out = [R("Rtop needed",rNeed,"Ω"),R("Safe E24 Rtop",rTop,"Ω","rounded up so the ADC pin stays at or below full scale"),
+                R("Actual ADC maximum",vAdc,"V"),R("ADC headroom",Vref-vAdc,"V"),
+                R("Divider Thevenin resistance",rth,"Ω"),R("Filter cut-off",fc,"Hz"),
+                R("½ LSB settling time",tSettle,"s",n+" bit accuracy after a full-scale step")];
+   const lsb=Vref/Math.pow(2,n);
+   const refError=Vref*(VrefErr/100+VrefTC*Tspan*1e-6);
+   const dividerError=Vref*divErr/100, offsetError=offset*lsb, inlError=inl*lsb;
+   const quantNoise=lsb/Math.sqrt(12), randomRSS=Math.hypot(quantNoise,noise);
+   const conservative=refError+dividerError+offsetError+inlError+3*randomRSS;
+   const accuracyBits=Math.max(0,n-Math.log2(Math.max(1,conservative/lsb)));
+   out.push(R("ADC LSB size",lsb,"V"),R("Quantisation noise (RMS)",quantNoise,"V"),
+            R("Reference error",refError,"V","initial error plus entered temperature drift"),
+            R("Divider ratio error",dividerError,"V"),R("ADC offset error",offsetError,"V"),
+            R("ADC INL error",inlError,"V"),R("Input-referred noise (RMS)",noise,"V"),
+            R("RSS random uncertainty",randomRSS,"V","quantisation and entered noise"),
+            R("Conservative total uncertainty",conservative,"V","static errors + 3σ random uncertainty"),
+            R("Conservative error",100*conservative/Vref,"% of full scale"),
+            R("Resolution after error budget",accuracyBits,"bit","accuracy estimate, not datasheet ENOB"));
+   if(isFinite(fs)&&fs>0) out.push(R("Settling windows per sample",1/(fs*tSettle),"×",
+     "the ADC acquisition window, not necessarily the whole sample period, must cover one settling time"));
+   if(isFinite(Vfault)&&isFinite(Iclamp)&&Iclamp>0){
+     const rProtect = Math.max(0,(Vfault-Vref)/Iclamp), extra=Math.max(0,rProtect-Rsrc);
+     out.push(R("Total protection resistance",rProtect,"Ω","to limit an external clamp to the stated current"),
+              R("Extra protection resistance",extra,"Ω",extra>0?"in addition to the entered source resistance":"the entered series resistance is enough for that fault"));
+   }
+   return out;
+ }},
+
+{id:"bjt", group:"Power", name:"BJT base resistor",
+ note:"NPN low-side switch sizing. Use a forced gain well below the datasheet hFE so the transistor reaches saturation instead of trusting a typical gain figure.",
+ fields:[F("Vdrive","GPIO / drive voltage","V","3.3"),F("Vload","Load supply","V","12"),
+         F("Ic","Collector current","A","100m"),F("Vbe","VBE in saturation","V","0.8"),
+         F("Vcesat","VCE(sat)","V","0.2"),F("beta","Forced current gain","×","10"),
+         F("hfe","Worst-case datasheet hFE","×","100")],
+ run(v){
+   const {Vdrive,Ic,Vbe,Vcesat,beta,hfe} = v;
+   if(!isFinite(Vdrive)||!isFinite(Ic)||!isFinite(Vbe)||!isFinite(beta)||Vdrive<=Vbe||Ic<=0||beta<=0)
+     return [R("Base drive",null,"","drive voltage must exceed VBE and collector current must be positive")];
+   const ibNeed=Ic/beta, rMax=(Vdrive-Vbe)/ibNeed, rE24=e24AtMost(rMax);
+   const ibActual=(Vdrive-Vbe)/rE24, betaActual=Ic/ibActual;
+   const out=[R("Base current needed",ibNeed,"A"),R("Maximum base resistance",rMax,"Ω","any larger value may leave the transistor out of saturation"),
+              R("E24 base resistor",rE24,"Ω","rounded down to preserve base drive"),R("Actual base current",ibActual,"A"),
+              R("Forced beta with E24",betaActual,"×"),R("Base resistor dissipation",ibActual*ibActual*rE24,"W")];
+   if(isFinite(Vcesat)&&Vcesat>=0) out.push(R("Transistor dissipation",Ic*Vcesat,"W","at the entered VCE(sat)"));
+   if(isFinite(hfe)&&hfe>0) out.push(R("hFE margin",hfe/betaActual,"×",hfe/betaActual<2?"small margin — use a stronger base drive or a MOSFET":"forced gain remains comfortably below the datasheet minimum"));
+   return out;
+ }},
+
+{id:"rectifier", group:"Power", name:"Bridge rectifier & smoothing capacitor",
+ note:"A full-wave bridge recharges the reservoir capacitor twice per mains cycle. It also estimates transformer VA, regulation, bridge heat and inrush from the values entered; use the transformer and bridge datasheets for the final selection.",
+ fields:[F("Vac","Transformer secondary (RMS)","V","12"),F("fline","Mains frequency","Hz","50"),
+         F("I","Load current","A","500m"),F("Vripple","Allowed peak-to-peak ripple","V","1"),
+         F("Vd","One diode forward drop","V","0.8"),F("C","Selected reservoir capacitor","F","2200u"),
+         F("kripple","Capacitor ripple-current multiplier","×","1.8","1.8",true),
+         F("ESR","Capacitor ESR at 100/120 Hz","Ω","100m","100m"),
+         F("Rth","Capacitor thermal resistance to ambient","°C/W","20","20"),F("Tamb","Ambient temperature","°C","25","25"),
+         F("Tmax","Capacitor maximum temperature","°C","105","105"),F("Irated","Datasheet ripple-current rating (RMS)","A","1","1"),
+         F("IsecFactor","Transformer secondary RMS-current multiplier","×","1.8","1.8",true),
+         F("Rinrush","Transformer + series resistance","Ω","1","1"),F("Rbridge","Bridge thermal resistance","°C/W","15","15"),
+         F("reg","Transformer regulation / no-load rise","%","15","15")],
+ run(v){
+   const {Vac,fline,I,Vripple,Vd,C,kripple,ESR,Rth,Tamb,Tmax,Irated,IsecFactor,Rinrush,Rbridge,reg} = v;
+   if(!isFinite(Vac)||!isFinite(fline)||!isFinite(I)||!isFinite(Vripple)||!isFinite(Vd)||!isFinite(C)||
+      !isFinite(kripple)||!isFinite(ESR)||!isFinite(Rth)||!isFinite(Tamb)||!isFinite(Tmax)||!isFinite(Irated)||
+      !isFinite(IsecFactor)||!isFinite(Rinrush)||!isFinite(Rbridge)||!isFinite(reg)||
+      Vac<=0||fline<=0||I<0||Vripple<=0||C<=0||kripple<=0||ESR<0||Rth<0||Tmax<=Tamb||Irated<=0||
+      IsecFactor<=0||Rinrush<=0||Rbridge<0||reg<0) return null;
+   const vPeak=Vac*Math.SQRT2-2*Vd;
+   if(vPeak<=0) return [R("Bridge output",null,"","two diode drops exceed the transformer peak")];
+   const cNeed=I/(2*fline*Vripple), cE24=e24AtLeast(cNeed);
+   const ripple=I/(2*fline*C), vMin=vPeak-ripple;
+   /* A reservoir capacitor is charged in narrow pulses. Its exact RMS current
+      depends on transformer impedance and conduction angle, so the explicit
+      multiplier keeps this thermal calculation honest and adjustable. */
+   const iCapRms=kripple*I, pESR=iCapRms*iCapRms*ESR, tempRise=pESR*Rth, tCap=Tamb+tempRise;
+   const rippleUse=iCapRms/Irated;
+   const iSecondary=IsecFactor*I, transformerVA=Vac*iSecondary, bridgeLoss=2*Vd*I;
+   const vacNoLoad=Vac*(1+reg/100), acPeak=Vac*Math.SQRT2, acPeakNoLoad=vacNoLoad*Math.SQRT2;
+   const vPeakNoLoad=acPeakNoLoad-2*Vd;
+   const bridgeTemp=Tamb+bridgeLoss*Rbridge, inrush=acPeakNoLoad/Rinrush;
+   let capAdvice;
+   if(rippleUse>1 || tCap>Tmax) capAdvice="Not suitable — use a larger or parallel 105°C high-ripple, low-ESR aluminum electrolytic.";
+   else if(rippleUse>0.8 || tempRise>10) capAdvice="Use a 105°C high-ripple, low-ESR aluminum electrolytic and keep additional RMS-current margin.";
+   else capAdvice="Use a 105°C aluminum electrolytic whose datasheet rating meets the calculated RMS ripple current; low-ESR is preferred.";
+   return [R("Peak after bridge",vPeak,"V","transformer RMS × √2 minus two diode drops"),
+           R("Capacitance needed",cNeed,"F","for the allowed peak-to-peak ripple"),
+           R("Next E24 capacitance",cE24,"F","round upward for the ripple target"),
+           R("Ripple with selected C",ripple,"V"),R("Minimum DC voltage",vMin,"V"),
+           R("Equivalent load resistance",I>0?vMin/I:Infinity,"Ω","at minimum DC voltage"),
+           R("No-load transformer secondary",vacNoLoad,"V","entered rated secondary plus transformer regulation"),
+           R("Highest capacitor voltage (nominal mains)",vPeakNoLoad,"V","no-load secondary peak minus two diode drops"),
+           R("Suggested capacitor voltage rating",1.25*vPeakNoLoad,"V","25 % margin; also check the highest mains voltage"),
+           R("Transformer secondary RMS current",iSecondary,"A","load current × entered capacitor-input multiplier"),
+           R("Minimum transformer rating",transformerVA,"VA","at the entered secondary voltage"),
+           R("Suggested transformer rating",1.25*transformerVA,"VA","includes a 25 % VA margin"),
+           R("Bridge dissipation",bridgeLoss,"W","two diode drops × DC load current"),
+           R("Estimated bridge temperature",bridgeTemp,"°C","ambient + bridge loss × bridge thermal resistance"),
+           R("Bridge PIV (ideal)",acPeakNoLoad,"V","one no-load transformer secondary peak"),
+           R("Suggested bridge VRRM minimum",2*acPeakNoLoad,"V","2× no-load secondary peak margin; choose the next standard rating"),
+           R("Estimated switch-on inrush",inrush,"A","cold capacitor at zero voltage; transformer impedance must be included"),
+           R("Estimated capacitor ripple current",iCapRms,"A","RMS estimate: load current × entered multiplier; verify against the actual transformer and bridge"),
+           R("Capacitor ESR dissipation",pESR,"W","I² × ESR, using ESR at the rectifier ripple frequency"),
+           R("Estimated capacitor temperature rise",tempRise,"°C","ESR dissipation × thermal resistance to ambient"),
+           R("Estimated capacitor core temperature",tCap,"°C","ambient plus estimated self-heating"),
+           R("Ripple-current utilisation",100*rippleUse,"%","must remain below 100% of the datasheet RMS rating"),
+           R("Capacitor recommendation",null,"",capAdvice)];
+ }}
+];
+
+NEW_CALCS.concat(WIRE_CALCS, POWER_CALCS, AMP_CALCS, EXTRA_CALCS).forEach(c=>CALCS.push(c));
 const GROUP_ORDER = ["Basics","Components","Filters","Op-amps","Power","Wire","Measurement"];
 CALCS.sort((a,b)=> GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group));
 
@@ -1659,14 +2074,19 @@ function calcRun(c){
   c.fields.forEach(f=>{
     if(f.t==="text") v[f.k] = String(raw[f.k]||"").trim();
     else if(f.t==="sel") v[f.k] = (raw[f.k]!==undefined && raw[f.k]!=="") ? raw[f.k] : (f.def||f.opts[0]);
-    else v[f.k] = parseSI(raw[f.k], f.unit);
+    else if(f.t==="check") v[f.k] = raw[f.k]!==undefined ? raw[f.k]===true || raw[f.k]==="true" : !!f.def;
+    else {
+      const entered = raw[f.k];
+      const fallback = f.def!==undefined ? f.def : entered;
+      v[f.k] = parseSI(entered!==undefined && entered!=="" ? entered : fallback, f.unit);
+    }
   });
   try{ return c.run(v, raw); }catch(e){ return null; }
 }
 function calcDiagram(c){
   const f = DIAGRAMS[c.id];
   if(!f) return "";
-  try{ return `<div class="schem">${f(ui.calcVals[c.id]||{}, calcRun(c))}</div>`; }catch(e){ return ""; }
+  try{ return `<div class="schem"><div class="schem-head"><b>Live schematic</b><span>${esc(c.group)} · ${esc(c.id)}</span></div>${f(ui.calcVals[c.id]||{}, calcRun(c))}</div>`; }catch(e){ return ""; }
 }
 function calcOutHTML(c){
   const rows = calcRun(c);
@@ -1686,7 +2106,7 @@ function calcOutHTML(c){
 function calcUnitHints(c){
   const seen = new Set(), out = [];
   for(const f of c.fields){
-    if(f.t==="sel" || f.t==="text") continue;
+    if(f.t==="sel" || f.t==="text" || f.t==="check") continue;
     const u = String(f.unit||"").trim();
     if(!u || seen.has(u)) continue;
     seen.add(u);
@@ -1706,16 +2126,19 @@ function viewCalc(){
   const c = calcById(ui.calc);
   calcSeed(c);
   const raw = ui.calcVals[c.id] || {};
+  const shownFields = c.fields.filter(f=>!f.showWhen || (raw[f.showWhen]!==false && raw[f.showWhen]!=="false"));
   return `<div class="panel"><h2>${esc(c.name)}</h2>
       ${c.note?`<p>${esc(c.note)}</p>`:""}
       <div class="form" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
-        ${c.fields.map(f=>`<div class="f">
-          <label class="lab">${esc(f.label)}${f.unit?` <span style="color:var(--ink3)">${esc(f.unit)}</span>`:""}</label>
+        ${shownFields.map(f=>f.t==="check"
+          ? `<div class="f checkfield${f.newRow?" newrow":""}"><label class="checkrow"><input type="checkbox" class="calcin" data-ck="${esc(f.k)}"${(raw[f.k]!==undefined ? raw[f.k]===true || raw[f.k]==="true" : !!f.def)?" checked":""}><span>${esc(f.label)}</span></label></div>`
+          : `<div class="f${f.newRow?" newrow":""}">
+          <label class="lab">${esc(f.label)}${f.unit?`<span class="field-unit">${esc(f.unit)}</span>`:""}</label>
           ${f.t==="sel"
             ? `<select class="calcin" data-ck="${esc(f.k)}">${f.opts.map(o=>{
                  const cur = (raw[f.k]!==undefined && raw[f.k]!=="") ? raw[f.k] : (f.def||f.opts[0]);
                  return `<option${o===cur?" selected":""}>${esc(o)}</option>`;}).join("")}</select>`
-            : `<input class="calcin" data-ck="${esc(f.k)}" value="${esc(raw[f.k]||"")}" placeholder="${esc(f.ph||"")}"
+            : `<input class="calcin" data-ck="${esc(f.k)}" value="${esc(raw[f.k]!==undefined && raw[f.k]!=="" ? raw[f.k] : (f.def!==undefined ? f.def : ""))}" placeholder="${esc(f.ph||"")}"
                  inputmode="text" spellcheck="false" autocomplete="off">`}</div>`).join("")}
       </div>
       <div class="sheetbar"><button class="btn ghost" id="calcClear">Clear</button>
@@ -1732,14 +2155,98 @@ function viewCalc(){
 const ALIAS = {
   cable:"awg gauge resistivity", wire:"awg gauge resistivity", smd:"eia96",
   rc:"cutoff corner", lc:"resonant", buck:"smps", boost:"smps", ldo:"dropout",
-  batt:"mah", divider:"potential", react:"impedance", rcolor:"stripes",
-  shunt:"burden", zener:"clamp"
+  batt:"mah", divider:"potential thevenin loaded impedance", react:"impedance", rcolor:"stripes",
+  shunt:"burden", zener:"clamp",
+  adc:"sampling clamp protection error budget reference quantisation noise",
+  opspeed:"op amp gbw bandwidth slew rate full power",
+  bjt:"transistor base saturation gpio", rectifier:"bridge transformer mains reservoir smoothing inrush"
 };
 
 /* ----------------------------------------------------------------- render */
+function viewAbout(){
+  const short = u => esc(u.replace("https://",""));
+  return `<div class="panel"><h2>Circuit Calcs ${esc(APP_VERSION)}</h2>
+      <p>Twenty-nine bench calculators, each drawn as the circuit it is describing, with the drawing
+         redrawn as you type. It is a single HTML file: no server to run, no build step, no account to
+         make, no dependency to install. Open it in a browser and it works — from a hard disk, from a
+         USB stick, or from any address you care to serve it at.</p>
+      <p>The page loads nothing external — no CDN, no fonts, no analytics — and makes no network
+         request of any kind. It works with the wire pulled out, and it will keep working long after
+         anybody stops maintaining it.</p>
+      <div class="sheetbar" style="margin-top:14px;flex-wrap:wrap">
+        <a class="btn" target="_blank" rel="noreferrer" href="${esc(REPO_URL)}">Source on GitHub</a>
+        <a class="btn ghost" target="_blank" rel="noreferrer" href="${esc(REPO_URL)}/releases/latest">Latest version</a>
+        <span class="pn" style="color:var(--ink3);font-size:12px">${short(REPO_URL)}</span>
+      </div>
+    </div>
+    <div class="panel"><h2>Reading and writing numbers</h2>
+      <p>Engineering notation goes in and comes out. Type <span class="pn">4k7</span>
+         <span class="pn">100n</span> <span class="pn">10u</span> <span class="pn">1M</span> — a letter
+         may stand in for the decimal point, the way it does on a schematic.</p>
+      <p><b>Case matters, on purpose.</b> <span class="pn">M</span> is mega and
+         <span class="pn">m</span> is milli, nine orders of magnitude apart on one character. Stating
+         the unit is optional; the field says which one it expects.</p>
+      <p>Every calculator opens with figures already in it, so it lands on a worked sum rather than a
+         blank form. Clearing a box afterwards leaves it cleared.</p>
+    </div>
+    <div class="panel"><h2>Where the numbers stop</h2>
+      <p>The cable calculator sizes a run for an allowed drop, reports the voltage actually reaching
+         the load, and asks for the conductor temperature rather than assuming 20 °C — copper gains
+         0.39 % per degree and a loaded cable is not cold. It gives watts per metre and refuses to
+         print a temperature rise, because that depends on insulation, bundling and the air around it.</p>
+      <p>For the same reason the AWG table carries diameter, cross-section and Ω/m and no current
+         rating. A number invented there would be believed.</p>
+    </div>
+    <div class="panel"><h2>Linking to one</h2>
+      <p>Each calculator has its own address, so one can be kept in a tab of its own or sent to
+         somebody. The id is the one in the address bar when you open it:</p>
+      <div class="kv">
+        <b>calc.html#${esc(ui.calc)}</b>
+        <span>the one you were last looking at — ${esc(calcById(ui.calc).name)}</span>
+        <b>#about</b><span>this page</span>
+      </div>
+    </div>
+    <div class="panel"><h2>What it remembers</h2>
+      <p>The calculator you had open and what you typed into each, in this browser only, through
+         <span class="pn">localStorage</span>. Nothing is uploaded anywhere and there is no account.
+         Clearing your browser data clears it, and a private window starts fresh every time.</p>
+    </div>
+    <div class="panel"><h2>Where it came from</h2>
+      <p>These were part of <b>Parts Bin</b>, a component inventory in a single HTML file, where they
+         were roughly a third of the file and touched the inventory exactly once. They were split out
+         because they are useful on their own, because they read better in a tab of their own, and
+         because somebody who prefers their own calculators can now ignore these without ignoring the
+         inventory. The suggestion came from the EEVblog forum.</p>
+      <p>Parts Bin links here from its own toolbar. Nothing is loaded across in either direction: the
+         link opens a tab, and each page still works with no network at all.</p>
+      <div class="sheetbar" style="flex-wrap:wrap">
+        <a class="btn ghost" target="_blank" rel="noreferrer"
+           href="https://ajengineering.github.io/parts-bin-app/">Try Parts Bin</a>
+        <span class="pn" style="color:var(--ink3);font-size:12px">${short(BIN_URL)}</span>
+      </div>
+    </div>
+    <div class="panel"><h2>Licence</h2>
+      <p>MIT. Use it, change it, build on it, sell what you make with it — commercially or otherwise.
+         The single condition is that the copyright notice and the licence text travel with the copies
+         you pass on, so the source stays credited.</p>
+      <div class="kv">
+        <b>author</b><span>Abdullah Jalloul</span>
+        <b>source</b><span><a class="linkish" target="_blank" rel="noreferrer" href="${esc(REPO_URL)}">${short(REPO_URL)}</a></span>
+        <b>licence</b><span><a class="linkish" target="_blank" rel="noreferrer" href="${esc(REPO_URL)}/blob/main/LICENSE">MIT</a></span>
+        <b>issues</b><span><a class="linkish" target="_blank" rel="noreferrer" href="${esc(REPO_URL)}/issues">report a problem or ask for a calculator</a></span>
+      </div>
+    </div>`;
+}
+
 function render(){
+  /* About is prose about the program, not about any one calculator, so the
+     list goes and the text takes the width                               */
+  const info = ui.view==="about";
+  $("#rail").hidden = info;
+  $("main").classList.toggle("solo", info);
   renderRail();
-  $("#stage").innerHTML = viewCalc();
+  $("#stage").innerHTML = info ? viewAbout() : viewCalc();
+  $$("#views button").forEach(b=>b.classList.toggle("on", b.dataset.view===ui.view));
   save();
 }
 
@@ -1769,8 +2276,15 @@ function renderRail(){
 /* ----------------------------------------------------------------- events */
 document.addEventListener("click", ev=>{
   const t = ev.target;
+  const vw = t.closest("[data-view]");
+  if(vw){
+    ui.view = vw.dataset.view;
+    location.hash = ui.view==="about" ? "#about" : "#"+ui.calc;
+    render(); window.scrollTo(0,0);
+    return;
+  }
   const ck = t.closest("[data-calc]");
-  if(ck){ ui.calc = ck.dataset.calc; render(); window.scrollTo(0,0); return; }
+  if(ck){ ui.calc = ck.dataset.calc; ui.view = "calc"; render(); window.scrollTo(0,0); return; }
   if(t.id==="calcClear"){
     delete ui.calcVals[ui.calc];
     render();
@@ -1786,6 +2300,7 @@ const reRun = ()=>{
 };
 document.addEventListener("input", ev=>{
   if(ev.target.classList && ev.target.classList.contains("calcin")){
+    if(ev.target.type==="checkbox") return; // its change event rerenders dependent fields
     const c = calcById(ui.calc);
     ui.calcVals[c.id] = ui.calcVals[c.id] || {};
     ui.calcVals[c.id][ev.target.dataset.ck] = ev.target.value;
@@ -1798,7 +2313,8 @@ document.addEventListener("change", ev=>{
   if(ev.target.classList && ev.target.classList.contains("calcin")){
     const c = calcById(ui.calc);
     ui.calcVals[c.id] = ui.calcVals[c.id] || {};
-    ui.calcVals[c.id][ev.target.dataset.ck] = ev.target.value;
+    ui.calcVals[c.id][ev.target.dataset.ck] = ev.target.type==="checkbox" ? ev.target.checked : ev.target.value;
+    if(ev.target.type==="checkbox"){ render(); return; }
     reRun();
   }
 });
@@ -1812,14 +2328,17 @@ document.addEventListener("keydown", e=>{
 /* A calculator can be linked to directly, so one of these can be sent to
    someone or kept in a browser tab of its own.                            */
 function fromHash(){
-  const id = decodeURIComponent(String(location.hash||"").replace(/^#/,"")).trim();
-  if(id && CALCS.some(c=>c.id===id)){ ui.calc = id; return true; }
+  const hashId = decodeURIComponent(String(location.hash||"").replace(/^#/,"")).trim();
+  const id = hashId==="dividerload" ? "divider" : hashId;
+  if(id==="about"){ ui.view = "about"; return true; }
+  if(id && CALCS.some(c=>c.id===id)){ ui.calc = id; ui.view = "calc"; return true; }
   return false;
 }
 window.addEventListener("hashchange", ()=>{ if(fromHash()) render(); });
 
 try{
   load();
+  migrateCalculatorIds();
   fromHash();
   render();
 }catch(err){

@@ -1,6 +1,6 @@
 # Circuit Calcs
 
-Twenty-five bench calculators in a single HTML file. Each one draws the circuit it is describing,
+Twenty-nine bench calculators in a single HTML file. Each one draws the circuit it is describing,
 and the drawing redraws as you type.
 
 **[Open it →](https://ajengineering.github.io/circuit-calcs/)**
@@ -16,13 +16,13 @@ pulled out and will keep working long after anyone stops maintaining it.
 
 | Group | Calculators |
 |---|---|
-| Basics | Ohm's law & power · voltage divider · LED series resistor |
+| Basics | Ohm's law & power · voltage divider · voltage divider with load · LED series resistor |
 | Components | Resistor colour code · SMD resistor code · series & parallel · reactance Xc and XL |
 | Filters | RC filter & time constant · LC resonance |
-| Op-amps | Inverting · non-inverting · difference · comparator with hysteresis |
-| Power | Adjustable regulator · linear regulator dissipation · buck · boost · zener shunt · MOSFET losses · heatsink selection |
+| Op-amps | Inverting · non-inverting · difference · comparator with hysteresis · bandwidth & slew rate |
+| Power | Adjustable regulator · linear regulator dissipation · buck · boost · zener shunt · BJT base resistor · bridge rectifier, transformer & smoothing · MOSFET gate drive & losses · heatsink selection |
 | Wire | Wire resistance from diameter · cable size & voltage drop |
-| Measurement | Current sense shunt · PCB trace width (IPC-2221) · battery runtime |
+| Measurement | Current sense shunt · ADC input front-end · PCB trace current & width · battery runtime |
 
 ## Engineering notation, in and out
 
@@ -51,9 +51,12 @@ https://ajengineering.github.io/circuit-calcs/calc.html#trace
 https://ajengineering.github.io/circuit-calcs/calc.html#cable
 ```
 
-The id is the one in the search box results — `ohm`, `divider`, `led`, `rcolor`, `smd`, `netcombo`,
-`react`, `rc`, `lc`, `opinv`, `opnon`, `opdiff`, `hyst`, `reg`, `ldo`, `buck`, `boost`, `zener`,
-`fet`, `heatsink`, `wire`, `cable`, `shunt`, `trace`, `batt`.
+The id is the one in the search box results — `ohm`, `divider`, `led`, `rcolor`, `smd`,
+`netcombo`, `react`, `rc`, `lc`, `opinv`, `opnon`, `opdiff`, `hyst`, `opspeed`, `reg`, `ldo`, `buck`, `boost`,
+`zener`, `bjt`, `rectifier`, `fet`, `heatsink`, `wire`, `cable`, `shunt`, `adc`, `trace`, `batt`.
+
+`#about` opens the **About** tab, which carries the version, the licence, what the page keeps in
+your browser, and why these calculators are a separate file from the inventory they came out of.
 
 ## Searching
 
