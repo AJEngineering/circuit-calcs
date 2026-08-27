@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Circuit Calcs — bench calculators that draw themselves</title>
-<meta name="description" content="Twenty-nine bench calculators, each drawn as a schematic that redraws as you type. One HTML file, no server, no dependencies.">
+<meta name="description" content="Thirty-seven bench calculators, each drawn as a schematic that redraws as you type. One HTML file, no server, no dependencies.">
 <style>
 :root{
   /* palette: printed bin label on the bench — paper, Kapton amber, ESD blue */
@@ -301,7 +301,7 @@ td.num{font-variant-numeric:tabular-nums}
 <header class="top">
   <div class="brand">
     <span class="brand-mark">Circuit Calcs</span>
-    <span class="brand-sub">twenty-nine, each drawn as a schematic</span>
+    <span class="brand-sub">thirty-seven, each drawn as a schematic</span>
   </div>
   <div class="searchwrap">
     <input id="q" type="search" placeholder="divider   ·   trace width   ·   AWG   ·   buck" autocomplete="off" spellcheck="false">
@@ -329,7 +329,7 @@ td.num{font-variant-numeric:tabular-nums}
 
 <script>
 "use strict";
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.1.0";
 const REPO_URL = "https://github.com/AJEngineering/circuit-calcs";
 const BIN_URL  = "https://github.com/AJEngineering/parts-bin-app";
 const $  = (s,r=document)=>r.querySelector(s);
@@ -488,6 +488,37 @@ function pcbTraceFit(layer, oz){
   const nearest = weights.reduce((best,w)=>Math.abs(w-oz)<Math.abs(best-oz)?w:best, weights[0]);
   return PCB_TRACE_FIT.Internal[nearest];
 }
+/* IEC 60751 Callendar–Van Dusen coefficients for platinum RTDs.  The fourth
+   order term is needed only below 0 °C, so the positive-temperature inverse
+   stays a simple quadratic; a bounded bisection is used below freezing. */
+const RTD_A = 3.9083e-3, RTD_B = -5.775e-7, RTD_C = -4.183e-12;
+function rtdResistance(t, r0){
+  return r0*(1 + RTD_A*t + RTD_B*t*t + (t<0 ? RTD_C*(t-100)*t*t*t : 0));
+}
+function rtdSensitivity(t, r0){
+  return r0*(RTD_A + 2*RTD_B*t + (t<0 ? RTD_C*(4*t*t*t-300*t*t) : 0));
+}
+function rtdTemperature(r, r0){
+  const rMin=rtdResistance(-200,r0), rMax=rtdResistance(850,r0);
+  if(!isFinite(r) || r<rMin || r>rMax) return NaN;
+  if(r>=r0){
+    const d=RTD_A*RTD_A-4*RTD_B*(1-r/r0);
+    return d>=0 ? (-RTD_A+Math.sqrt(d))/(2*RTD_B) : NaN;
+  }
+  let lo=-200, hi=0;
+  for(let i=0;i<56;i++){
+    const mid=(lo+hi)/2;
+    if(rtdResistance(mid,r0)<r) lo=mid; else hi=mid;
+  }
+  return (lo+hi)/2;
+}
+function ntcResistance(t, r25, beta){
+  return r25*Math.exp(beta*(1/(t+273.15)-1/298.15));
+}
+function ntcTemperature(r, r25, beta){
+  return 1/(1/298.15 + Math.log(r/r25)/beta)-273.15;
+}
+function ntcSensitivity(t, r, beta){ return -beta*r/Math.pow(t+273.15,2); }
 const CALCS = [
 {id:"ohm", group:"Basics", name:"Ohm's law & power",
  note:"Fill any two boxes. The other two follow.",
@@ -517,19 +548,101 @@ const CALCS = [
            R("Dissipation",(Vs-Vf)*(Vs-Vf)/e,"W","pick a part rated at least twice this")];
  }},
 
-{id:"rc", group:"Filters", name:"RC filter & time constant",
- fields:[F("R","Resistance","\u03a9","10k"),F("C","Capacitance","F","100n"),F("f","Frequency for reactance","Hz","1k")],
+{id:"rc", group:"Filters", name:"Passive filters",
+ note:"Choose the transfer function first, then enter the part values and test frequency. RC and RL are first-order filters; the RLC options are a series-resonant band-pass (output across R) and band-stop (output across L + C).",
+ fields:[FS("type","Filter type",["RC low-pass","RC high-pass","RL low-pass","RL high-pass","RLC band-pass","RLC band-stop"],"RC low-pass"),
+         F("R","Series / load resistance","Ω","10k"),
+         {...F("C","Capacitance","F","100n"),showWhen:{k:"type",is:["RC low-pass","RC high-pass","RLC band-pass","RLC band-stop"]}},
+         {...F("L","Inductance","H","10m","10m"),showWhen:{k:"type",is:["RL low-pass","RL high-pass","RLC band-pass","RLC band-stop"]}},
+         F("f","Test frequency","Hz","1k"),F("Vpp","Input, peak to peak (optional)","V","")],
  run(v){
-   const {R:r,C,f} = v;
-   if(!isFinite(r)||!isFinite(C)||r<=0||C<=0) return null;
-   const tau = r*C, fc = 1/(2*Math.PI*tau);
-   const out = [R("Cut-off \u22123 dB",fc,"Hz"),R("Time constant \u03c4",tau,"s"),
-                R("Rise time 10\u201390 %",2.2*tau,"s"),R("Settle to 99 %",5*tau,"s")];
-   if(isFinite(f)&&f>0){
-     const xc = 1/(2*Math.PI*f*C);
-     out.push(R("Xc at "+siFmt(f,"Hz"),xc,"\u03a9"));
-     out.push(R("Attenuation at that point", 20*Math.log10(xc/Math.sqrt(r*r+xc*xc)),"dB"));
+   const {type,R:r,C,L,f,Vpp}=v;
+   /* what the scope would show: the magnitude already worked out, applied to
+      whatever amplitude is going in. Left out entirely when none is given. */
+   const swing = m => (isFinite(Vpp) && Vpp>0) ? [R("Output, peak to peak",Vpp*m,"V","at the test frequency")] : [];
+   const rc=type.startsWith("RC"), rl=type==="RL low-pass"||type==="RL high-pass", rlc=type.startsWith("RLC"), high=type.includes("high"), stop=type.includes("stop");
+   if(!isFinite(r)||!isFinite(f)||r<=0||f<=0||(rc&&(!isFinite(C)||C<=0))||(rl&&(!isFinite(L)||L<=0))||(rlc&&(!isFinite(L)||!isFinite(C)||L<=0||C<=0))) return null;
+   const w=2*Math.PI*f;
+   if(rc||rl){
+     const tau=rc ? r*C : L/r, fc=1/(2*Math.PI*tau), x=w*tau;
+     const mag=high ? x/Math.sqrt(1+x*x) : 1/Math.sqrt(1+x*x);
+     const phase=(high ? Math.PI/2-Math.atan(x) : -Math.atan(x))*180/Math.PI;
+     const reactance=rc ? 1/(w*C) : w*L;
+     const reactanceLabel=rc ? "Xc at test frequency" : "XL at test frequency";
+     return [R("Corner frequency (−3 dB)",fc,"Hz"),R("Time constant τ",tau,"s"),R(reactanceLabel,reactance,"Ω"),
+             R("Magnitude at test frequency",mag,"×"),R("Attenuation at test frequency",20*Math.log10(mag),"dB"),R("Phase at test frequency",phase,"°"),
+             R(high?"Step fall to 10 %":"Step rise 10–90 %",2.2*tau,"s"),R("Settle to 99 %",5*tau,"s")].concat(swing(mag));
    }
+   const f0=1/(2*Math.PI*Math.sqrt(L*C)), z0=Math.sqrt(L/C), q=z0/r, bw=f0/q, x=w*L-1/(w*C);
+   const mag=stop ? Math.abs(x)/Math.sqrt(r*r+x*x) : r/Math.sqrt(r*r+x*x);
+   const phase=(stop ? Math.atan2(r,x) : -Math.atan2(x,r))*180/Math.PI;
+   return [R("Centre frequency f0",f0,"Hz"),R("Q factor",q,"×"),R("Bandwidth (−3 dB)",bw,"Hz"),
+           R("Characteristic impedance",z0,"Ω"),R("Magnitude at test frequency",mag,"×"),R("Attenuation at test frequency",20*Math.log10(mag),"dB"),
+           R("Phase at test frequency",phase,"°"),R(stop?"Notch depth at f0":"Peak gain at f0",stop?0:1,"×")].concat(swing(mag));
+ }},
+
+{id:"activefilter", group:"Filters", name:"Active filters (op-amp)",
+ note:"The gain is set by the resistors that actually set it: Rg from the inverting input to ground, Rf from the output back to it, so K = 1 + Rf/Rg. Leave Rf at 0 for a plain buffer. The Sallen–Key options assume equal R1 = R2 and C1 = C2, which makes f0 = 1/(2πRC) and Q = 1/(3 − K); keep K below 3, and check the op-amp's bandwidth, slew rate and output swing.",
+ fields:[FS("type","Filter type",["Buffered RC low-pass","Buffered RC high-pass","Sallen-Key low-pass (equal R,C)","Sallen-Key high-pass (equal R,C)"],"Buffered RC low-pass"),
+         F("R","Equal filter resistance R","Ω","10k"),F("C","Equal filter capacitance C","F","10n"),F("Rg","Rg to ground","Ω","10k"),F("Rf","Rf feedback","Ω","10k"),F("f","Test frequency","Hz","1k"),F("Vpp","Input, peak to peak (optional)","V","")],
+ run(v){
+   const {type,R:r,C,Rg,Rf,f,Vpp}=v, sk=type.startsWith("Sallen-Key"), high=type.includes("high-pass");
+   if(!isFinite(r)||!isFinite(C)||!isFinite(Rg)||!isFinite(Rf)||!isFinite(f)||r<=0||C<=0||Rg<=0||Rf<0||f<=0) return null;
+   const K = 1 + Rf/Rg;
+   /* two swings worth knowing: the one at the test frequency, and the one in
+      the passband - which is the one that clips the op-amp.               */
+   const swing = m => !(isFinite(Vpp) && Vpp>0) ? [] :
+     [R("Output, peak to peak",Vpp*m,"V","at the test frequency"),
+      R("Passband output, peak to peak",Vpp*K,"V","check it against the op-amp's output swing")];
+   const tau=r*C, f0=1/(2*Math.PI*tau), x=f/f0;
+    /* At K = 3 the equal-component Sallen-Key has Q = 1/(3-K), which is a
+       division by zero: the poles reach the imaginary axis and the circuit
+       oscillates instead of filtering. Above 3 they cross into the right
+       half-plane. Returning nothing at that point looked like a broken page,
+       so the figures that are still true are shown with the reason the rest
+       are missing.                                                       */
+    if(sk && K>=3) return [
+      R("Natural frequency f0",f0,"Hz"),
+      R("Passband gain",K,"×","K = 1 + Rf/Rg"),
+      R("Sallen-Key Q",null,"", K===3
+        ? "infinite at K = 3 – the poles sit on the jω axis and this oscillates rather than filters"
+        : "negative above K = 3 – the poles have crossed into the right half-plane and this oscillates"),
+      R("What to change",null,"","the equal-component form needs K below 3. Lower Rf or raise Rg; K = 2 is a comfortable place to sit, and K = 1.586 gives the Butterworth response")
+    ];
+   if(!sk){
+     const base=high ? x/Math.sqrt(1+x*x) : 1/Math.sqrt(1+x*x), mag=K*base;
+     return [R("Corner frequency (−3 dB)",f0,"Hz"),R("Time constant τ",tau,"s"),R("Passband gain",K,"×"),
+             R("Magnitude at test frequency",mag,"×"),R("Attenuation at test frequency",20*Math.log10(mag),"dB"),
+             R("Phase at test frequency",(high?Math.PI/2-Math.atan(x):-Math.atan(x))*180/Math.PI,"°")].concat(swing(mag));
+   }
+   const q=1/(3-K), den=Math.sqrt(Math.pow(1-x*x,2)+Math.pow(x/q,2)), mag=K*(high?x*x:1)/den;
+   return [R("Natural frequency f0",f0,"Hz"),R("Sallen-Key Q",q,"×","equal-component approximation: Q = 1 ÷ (3 − K)"),
+           R("Passband gain",K,"×"),R("Peak magnitude at f0",K*q,"×"),R("Magnitude at test frequency",mag,"×"),
+           R("Attenuation at test frequency",20*Math.log10(mag),"dB"),R("Estimated bandwidth",f0/q,"Hz")].concat(swing(mag));
+ }},
+
+{id:"difflp", group:"Filters", name:"Differential low-pass (difference amp)",
+ note:"A difference amplifier with a capacitor across each feedback resistor – the usual shape of a shunt current sensor. The gain is R2/R1 in the passband and rolls off above 1/(2π · R2 · Cf). Both legs have to match, capacitors included: a mismatch there is a common-mode rejection that falls away with frequency rather than a gain error you can trim out. The CMRR figure below is the ceiling the resistors alone set at DC: the amplifier's own CMRR, the capacitor tolerance and stray capacitance all sit under it, so treat it as the best the resistors will allow rather than what the board will do.",
+ fields:[F("R1","R1 input, each leg","Ω","20k"),F("R2","R2 feedback, each leg","Ω","1M"),
+         F("Cf","Cf across each R2","F","10n"),
+         F("f","Test frequency (optional)","Hz",""),
+         F("Vin","Differential input, peak to peak (optional)","V","")],
+ run(v){
+   const {R1,R2,Cf,f,Vin}=v;
+   if(!isFinite(R1)||!isFinite(R2)||!isFinite(Cf)||R1<=0||R2<=0||Cf<=0) return null;
+   const g=R2/R1, fc=1/(2*Math.PI*R2*Cf);
+   const out=[R("Passband gain",g,"×","below the corner – above it, see the gain at the test frequency"),R("Passband gain",20*Math.log10(g),"dB"),
+              R("Corner frequency (−3 dB)",fc,"Hz","1 / (2π · R2 · Cf)"),
+              R("Time constant τ",R2*Cf,"s")];
+   const hasV = isFinite(Vin) && Vin>0;
+   if(isFinite(f)&&f>0){
+     const m=g/Math.sqrt(1+Math.pow(f/fc,2));
+     out.push(R("Gain at test frequency",m,"×"));
+     out.push(R("Response at test frequency",20*Math.log10(m/g),"dB","relative to the passband"));
+     if(hasV) out.push(R("Output, peak to peak",Vin*m,"V","at the test frequency"));
+   }
+   if(hasV) out.push(R("Passband output, peak to peak",Vin*g,"V","check it against the op-amp's output swing"));
+   out.push(R("CMRR from 1 % resistor mismatch",20*Math.log10((1+g)/0.04),"dB","the ceiling the resistors alone set, at DC. The amplifier's own CMRR, the capacitor tolerance, stray capacitance and any imbalance in the source all sit under it, and every one of them falls with frequency"));
    return out;
  }},
 
@@ -582,8 +695,8 @@ const CALCS = [
    const g = R2/R1;
    const out = [R("Differential gain",g,"\u00d7"),R("Differential gain",20*Math.log10(g),"dB")];
    if(isFinite(V1)&&isFinite(V2)) out.push(R("Output",g*(V2-V1),"V"));
-   out.push(R("CMRR with 1 % resistors",20*Math.log10((1+g)/0.04),"dB","worst case"));
-   out.push(R("CMRR with 0.1 % resistors",20*Math.log10((1+g)/0.004),"dB","worst case"));
+   out.push(R("CMRR from 1 % resistor mismatch",20*Math.log10((1+g)/0.04),"dB","the ceiling the resistors alone set, at DC. The amplifier's own CMRR, stray capacitance and any imbalance in the source all sit under it, and every one of them falls with frequency"));
+   out.push(R("CMRR from 0.1 % resistor mismatch",20*Math.log10((1+g)/0.004),"dB","the same, and with the same caveats"));
    return out;
  }},
 
@@ -746,6 +859,11 @@ const RL = 38, RW = 15;                       /* resistor body length, width */
 
 function W(pts,accent){ return `<polyline class="diagram-wire${accent?" diagram-accent":""}" points="${pts.map(p=>p.join(",")).join(" ")}" fill="none" stroke="var(--ink)" stroke-width="${SW}"/>`; }
 function DOT(x,y){ return `<circle class="diagram-node" cx="${x}" cy="${y}" r="3.2" fill="var(--ink)"/>`; }
+/* A vertical wire that crosses a horizontal net without an electrical join. */
+function JUMPV(x,y,span){
+  const s=span||10, chord=2*s-4;
+  return `<path class="diagram-wire" d="M ${x} ${y-s} v 2 a 6 6 0 0 1 0 ${chord} v 2" fill="none" stroke="var(--ink)" stroke-width="${SW}"/>`;
+}
 function TX(x,y,t,anchor,color,size,kind){
   if(t===undefined || t===null || t==="") return "";
   return `<text class="diagram-text${kind?" diagram-"+kind:""}" x="${x}" y="${y}" text-anchor="${anchor||"middle"}" font-family="ui-monospace,monospace"
@@ -787,6 +905,13 @@ function INDH(x,y,label,val){
   return `<path class="diagram-part" d="${d}" fill="none" stroke="var(--ink)" stroke-width="${SW}"/>`
        + TX(x,y-13,label) + VAL(x,y+19,val);
 }
+/* vertical inductor: terminals (x,y-24) and (x,y+24) */
+function INDV(x,y,label,val){
+  let d = "";
+  for(let i=0;i<4;i++) d += `M ${x} ${y-24+i*12} a 6 6 0 0 0 0 12 `;
+  return `<path class="diagram-part" d="${d}" fill="none" stroke="var(--ink)" stroke-width="${SW}"/>`
+       + TX(x+14,y-3,label,"start") + VAL(x+14,y+12,val,"start");
+}
 function GND(x,y){
   return W([[x,y],[x,y+8]]) + W([[x-11,y+8],[x+11,y+8]])
        + W([[x-7,y+12],[x+7,y+12]]) + W([[x-3,y+16],[x+3,y+16]]);
@@ -797,11 +922,28 @@ function BATTV(x,y,val){
        + TX(x-19,y-2,"+","end","var(--ink)",13) + VAL(x+19,y+2,val,"start");
 }
 /* op-amp: IN- at (x,y-h/2), IN+ at (x,y+h/2), OUT at (x+w,y) */
+/* The pins, and the glyphs that name them, sit at half the half-height - not
+   on the corners. The triangle is widest at its left edge and narrows to the
+   tip, so a glyph at a fixed size and offset runs into the sloping edge once
+   the symbol is drawn small. Both scale with it instead, and at the default
+   size they land exactly where they always did.                          */
+const OPI = (y,hh,top) => y + (top ? -hh/2 : hh/2);
+function OPGLYPH(x,y,hh,top,sym){
+  const size = Math.max(9, Math.round(hh*0.47)) + (sym==="−" ? 1 : 0);
+  const dx   = Math.max(5, Math.round(hh*0.27));
+  const by   = Math.max(3, Math.round(hh*0.17));
+  return TX(x+dx, OPI(y,hh,top)+by, sym, "start", "var(--ink)", size);
+}
 function OPAMP(x,y,h){
   const hh = h||30, w = hh*1.75;
   return `<polygon class="diagram-part" points="${x},${y-hh} ${x},${y+hh} ${x+w},${y}" fill="var(--card)" stroke="var(--ink)" stroke-width="${SW}"/>`
-       + TX(x+8,y-hh/2+5,"\u2212","start","var(--ink)",15)
-       + TX(x+8,y+hh/2+5,"+","start","var(--ink)",14);
+       + OPGLYPH(x,y,hh,true,"−") + OPGLYPH(x,y,hh,false,"+");
+}
+/* Non-inverting input at the upper pin, as used by the Sallen–Key references. */
+function OPAMP_PLUS_TOP(x,y,h){
+  const hh = h||30, w = hh*1.75;
+  return `<polygon class="diagram-part" points="${x},${y-hh} ${x},${y+hh} ${x+w},${y}" fill="var(--card)" stroke="var(--ink)" stroke-width="${SW}"/>`
+       + OPGLYPH(x,y,hh,true,"+") + OPGLYPH(x,y,hh,false,"−");
 }
 const OPO = h => (h||30)*1.75;                 /* output offset of an op-amp */
 function BOX(x,y,w,h,title,sub){
@@ -929,12 +1071,34 @@ led: (r,o) => SVG(
   LEDV(120,140) + VAL(166,144,vv(r,"Vf","Vf")+" @ "+vv(r,"If","If"),"start") +
   W([[120,148],[120,166]]) + GND(120,166), 380, 200),
 
-rc: (r,o) => SVG(
-  W([[36,70],[81,70]]) + NODE(36,60,"in") +
-  RESH(100,70,"R",vv(r,"R","")) +
-  W([[119,70],[262,70]]) + DOT(200,70) + NODE(300,66,"out") +
-  W([[200,70],[200,101]]) + CAPV(200,105,"C",vv(r,"C","")) + W([[200,109],[200,134]]) + GND(200,134) +
-  TX(140,158,"fc = 1 / 2\u03c0RC = "+gotv(o,"Cut-off \u22123 dB"),"middle","var(--ink3)",11), 380, 178),
+rc: (r,o) => {
+  const type=r.type||"RC low-pass", rc=type.startsWith("RC"), rlc=type.startsWith("RLC"), high=type.includes("high"), stop=type.includes("stop");
+  const head=rlc ? "f0 = "+gotv(o,"Centre frequency f0")+"  ·  Q = "+gotv(o,"Q factor") : "fc = "+gotv(o,"Corner frequency (−3 dB)")+"  ·  τ = "+gotv(o,"Time constant τ");
+  if(rlc&&stop) return SVG(
+    W([[28,76],[91,76]]) + NODE(28,61,"in","start") + RESH(110,76,"R",vv(r,"R","")) + W([[129,76],[330,76]]) + DOT(220,76) + NODE(362,61,"Vout","end") +
+    W([[220,76],[220,92]]) + INDV(220,116,"L",vv(r,"L","")) + W([[220,140],[220,146]]) + CAPV(220,150,"C",vv(r,"C","")) + W([[220,154],[220,170]]) + GND(220,170) +
+    TX(200,198,head,"middle","var(--ink3)",11) + TX(200,220,"gain @ f = "+gotv(o,"Magnitude at test frequency")+"  ·  "+gotv(o,"Attenuation at test frequency"),"middle","var(--kapton)",11.5) +
+    TX(200,242,"series RLC notch","middle","var(--esd)",11), 400, 259);
+  if(rlc) return SVG(
+    W([[28,80],[81,80]]) + NODE(28,64,"in","start") + RESH(100,80,"R",vv(r,"R","")) + W([[119,80],[136,80]]) + INDH(160,80,"L",vv(r,"L","")) + W([[184,80],[236,80]]) +
+    W([[236,80],[236,106]]) + CAPV(236,110,"C",vv(r,"C","")) + W([[236,114],[236,144]]) + GND(236,144) +
+    NODE(100,50,"Vout across R") +
+    TX(200,172,head,"middle","var(--ink3)",11) + TX(200,194,"gain @ f = "+gotv(o,"Magnitude at test frequency")+"  ·  "+gotv(o,"Attenuation at test frequency"),"middle","var(--kapton)",11.5) +
+    TX(200,216,stop?"series RLC notch":"series RLC band-pass","middle","var(--esd)",11), 400, 233);
+  const caps=TX(200,178,head,"middle","var(--ink3)",11) + TX(200,200,"gain @ f = "+gotv(o,"Magnitude at test frequency")+"  ·  "+gotv(o,"Attenuation at test frequency"),"middle","var(--kapton)",11.5) + TX(200,222,type,"middle","var(--esd)",11);
+  if(type==="RC low-pass") return SVG(
+    W([[30,76],[91,76]]) + NODE(30,61,"in","start") + RESH(110,76,"R",vv(r,"R","")) + W([[129,76],[330,76]]) + DOT(220,76) + NODE(362,61,"out","end") +
+    W([[220,76],[220,97]]) + CAPV(220,101,"C",vv(r,"C","")) + W([[220,105],[220,150]]) + GND(220,150) + caps, 400, 239);
+  if(type==="RC high-pass") return SVG(
+    W([[30,76],[106,76]]) + NODE(30,61,"in","start") + CAPH(110,76,"C",vv(r,"C","")) + W([[114,76],[220,76],[330,76]]) + DOT(220,76) + NODE(362,61,"out","end") +
+    W([[220,76],[220,97]]) + RESV(220,116,"R",vv(r,"R","")) + W([[220,135],[220,150]]) + GND(220,150) + caps, 400, 239);
+  if(type==="RL low-pass") return SVG(
+    W([[30,76],[86,76]]) + NODE(30,61,"in","start") + INDH(110,76,"L",vv(r,"L","")) + W([[134,76],[220,76],[330,76]]) + DOT(220,76) + NODE(362,61,"out","end") +
+    W([[220,76],[220,97]]) + RESV(220,116,"R",vv(r,"R","")) + W([[220,135],[220,150]]) + GND(220,150) + caps, 400, 239);
+  return SVG(
+    W([[30,76],[91,76]]) + NODE(30,61,"in","start") + RESH(110,76,"R",vv(r,"R","")) + W([[129,76],[220,76],[330,76]]) + DOT(220,76) + NODE(362,61,"out","end") +
+    W([[220,76],[220,92]]) + INDV(220,116,"L",vv(r,"L","")) + W([[220,140],[220,150]]) + GND(220,150) + caps, 400, 239);
+},
 
 lc: (r,o) => SVG(
   W([[60,105],[90,105]]) + DOT(90,105) + W([[310,105],[340,105]]) + DOT(310,105) +
@@ -962,6 +1126,32 @@ opnon: (r,o) => SVG(
   W([[145,95],[145,141]]) + RESV(145,160,"Rg",vv(r,"Rg","")) +
   W([[145,179],[145,192]]) + GND(145,192) +
   TX(268,150,"G = 1 + Rf / Rg = "+gotv(o,"Gain"),"middle","var(--ink3)",11), 400, 218),
+
+/* The difference amplifier again, with Cf across each R2. Laid out with the
+   feedback pair stacked so the capacitor sits above its resistor and the
+   parallel connection is visible rather than implied.                    */
+difflp: (r,o) => SVG(
+  W([[16,125],[61,125]]) + NODE(16,116,"CS+") + RESH(80,125,"R1",vv(r,"R1","")) + W([[99,125],[170,125]]) + DOT(135,125) +
+  W([[135,125],[135,80]]) + W([[135,80],[206,80]]) + RESH(225,80,"R2",vv(r,"R2","")) + W([[244,80],[310,80]]) +
+  /* Cf rides above its resistor with a gap wide enough for R2 to keep its
+     own label. Only the lower capacitor carries the value - the two are the
+     same part, and printing it twice crowds whichever corner it lands in. */
+  W([[135,80],[135,34]]) + W([[135,34],[221,34]]) + CAPH(225,34,"Cf","") + W([[229,34],[310,34]]) + W([[310,34],[310,80]]) +
+  DOT(310,80) + W([[310,80],[310,150]]) +
+  W([[16,175],[61,175]]) + NODE(16,166,"CS−") + RESH(80,175,"R1",vv(r,"R1","")) + W([[99,175],[170,175]]) + DOT(135,175) +
+  /* the parallel pair below: the links leave the leads, not the body edges,
+     and the capacitor stands far enough left that its value clears the
+     resistor rather than sitting on top of it.                          */
+  W([[135,175],[135,205]]) + DOT(135,205) + W([[135,205],[135,211]]) +
+  RESV(135,230,"R2",vv(r,"R2","")) + W([[135,249],[135,255]]) + DOT(135,255) +
+  W([[135,255],[135,268]]) + GND(135,268) +
+  W([[135,205],[76,205]]) + W([[76,205],[76,226]]) + CAPV(76,230,"Cf",vv(r,"Cf","")) +
+  W([[76,234],[76,255]]) + W([[76,255],[135,255]]) +
+  OPAMP(170,150,50) + W([[257,150],[350,150]]) + DOT(310,150) + NODE(388,154,"out","end") +
+  TX(200,304,"passband "+gotv(o,"Passband gain")+"  ·  fc = "+gotv(o,"Corner frequency (−3 dB)"),"middle","var(--ink3)",11) +
+  TX(200,324,(()=>{ const at=got(o,"Gain at test frequency"), ov=got(o,"Output, peak to peak");
+    return at ? at+" at the test frequency"+(ov?"  ·  "+ov:"") : (got(o,"Passband output, peak to peak")||""); })(),
+    "middle","var(--kapton)",11.5), 400, 338),
 
 opdiff: (r,o) => SVG(
   W([[16,85],[61,85]]) + NODE(16,76,"V1") +
@@ -1085,6 +1275,150 @@ DIAGRAMS.adc = (r,o) => SVG(
   TX(292,166,"fc = "+gotv(o,"Filter cut-off"),"middle","var(--ink3)",11) +
   TX(200,188,"½ LSB settle = "+gotv(o,"½ LSB settling time"),"middle","var(--kapton)",11.5) +
   TX(200,210,"budget = ±"+gotv(o,"Conservative total uncertainty")+"  ·  "+gotv(o,"Resolution after error budget")+" effective", "middle","var(--ink3)",10.5), 400, 230);
+
+DIAGRAMS.tempsense = (r,o) => {
+  const sensor=String(r.sensor||"NTC (Beta)");
+  const isNTC=sensor.startsWith("NTC");
+  const part=isNTC ? "NTC" : sensor.startsWith("PT1000") ? "PT1000" : sensor.startsWith("PT100") ? "PT100" : "RTD";
+  const sensorResult=(o||[]).find(x=>x.label==="Sensor resistance");
+  const sensorValue=sensorResult&&typeof sensorResult.value==="number" ? siFmt(sensorResult.value,"Ω") : "—";
+  const tempToR=(r.mode||"Temperature → resistance")==="Temperature → resistance";
+  const ntcTop=(r.ntcPosition||"NTC as Rtop (to Vbias)")==="NTC as Rtop (to Vbias)";
+  const conversion=tempToR
+    ? "T = "+vv(r,"T","25")+" °C  →  R = "+gotv(o,"Sensor resistance")
+    : "Rmeas = "+vv(r,"Rmeas","10k")+"  →  T = "+gotv(o,"Calculated sensor temperature");
+  if(isNTC) return SVG(
+    W([[200,28],[200,65]]) + NODE(200,18,"Vbias") + VAL(235,24,vv(r,"Vbias","3.3"),"start") +
+    RESV(200,84,ntcTop?"NTC":"Rfixed",ntcTop?sensorValue:vv(r,"Rfixed","10k")) + W([[200,103],[200,123]]) + DOT(200,113) + W([[200,113],[320,113]]) + DOT(320,113) +
+    NODE(320,89,"Vout") + VAL(320,106,got(o,"NTC divider output"),"middle") +
+    RESV(200,142,ntcTop?"Rfixed":"NTC",ntcTop?vv(r,"Rfixed","10k"):sensorValue) + W([[200,161],[200,176]]) + GND(200,176) +
+    TX(200,204,"divider current = "+gotv(o,"NTC divider current"),"middle","var(--ink3)",11) +
+    TX(200,227,"self-heating = "+gotv(o,"Estimated self-heating rise"),"middle","var(--kapton)",11.5) +
+    TX(200,250,conversion,"middle","var(--esd)",11), 400, 267);
+  return SVG(
+    NODE(48,42,"Iexc") + VAL(48,57,vv(r,"Iexc","100u"),"middle") + ARROW(48,76,114,76,"Iexc") +
+    W([[114,76],[141,76]]) + RESH(160,76,"Rlead",vv(r,"Rlead","0")) + W([[179,76],[220,76],[220,91]]) +
+    RESV(220,110,part,sensorValue) + W([[220,129],[220,151]]) + GND(220,151) +
+    TX(220,178,"Vexc = "+gotv(o,"Excitation voltage"),"middle","var(--ink3)",11) +
+    TX(220,199,"self-heating = "+gotv(o,"Estimated self-heating rise"),"middle","var(--kapton)",11.5) +
+    TX(220,220,"lead error ≈ "+gotv(o,"Lead-induced temperature error"),"middle","var(--ink3)",11) +
+    TX(220,243,conversion,"middle","var(--esd)",11), 400, 260);
+};
+
+DIAGRAMS.snubber = (r,o) => {
+  const rcd=(r.kind||"RC snubber")==="RCD clamp";
+  if(rcd) return SVG(
+    W([[42,46],[96,46]]) + NODE(42,31,"Vin+","start") + INDH(120,46,"Lleak",vv(r,"Lleak","")) + W([[144,46],[200,46]]) + DOT(200,46) +
+    W([[200,46],[200,74]]) + SWV(200,90,"SW") + W([[200,106],[200,145]]) + GND(200,145) +
+    W([[200,46],[234,46]]) + DIOH(242,46) + W([[250,46],[340,46]]) + DOT(310,46) +
+    W([[285,46],[285,76]]) + CAPV(285,80,"Cclamp",vv(r,"Cclamp","")) + W([[285,84],[285,132]]) +
+    W([[340,46],[340,76]]) + RESV(340,95,"Rclamp",vv(r,"Rclamp","")) + W([[340,114],[340,132]]) +
+    W([[60,46],[60,132],[340,132]]) +
+    TX(200,174,"leakage energy = "+gotv(o,"Leakage energy per cycle"),"middle","var(--ink3)",11) +
+    TX(200,196,"clamp dissipation = "+gotv(o,"RCD clamp dissipation"),"middle","var(--kapton)",11.5) +
+    TX(200,218,"capacitor ripple ≈ "+gotv(o,"Clamp capacitor ripple"),"middle","var(--esd)",11), 400, 235);
+  return SVG(
+    W([[30,70],[206,70]]) + NODE(30,55,"switch node","start") + DOT(206,70) + W([[206,70],[206,94]]) + SWV(206,110,"SW") + W([[206,126],[206,164]]) + GND(206,164) +
+    W([[206,70],[270,70],[270,96]]) + CAPV(270,100,"Csnub",vv(r,"Csnub","")) + W([[270,104],[270,116]]) + RESV(270,135,"Rsnub",vv(r,"Rsnub","")) + W([[270,154],[270,164],[206,164]]) +
+    TX(200,194,"ringing = "+gotv(o,"Ringing frequency"),"middle","var(--ink3)",11) +
+    TX(200,216,"Rcrit ≈ "+gotv(o,"Critical damping resistance"),"middle","var(--esd)",11) +
+    TX(200,238,"snubber dissipation = "+gotv(o,"RC snubber dissipation"),"middle","var(--kapton)",11.5), 400, 255);
+};
+
+DIAGRAMS.i2c = (r,o) => SVG(
+  W([[84,42],[316,42]]) + NODE(84,28,"VDD","start") + VAL(130,28,vv(r,"Vdd",""),"middle") +
+  W([[42,100],[344,100]]) + NODE(42,86,"SDA","start") + W([[42,148],[300,148]]) + NODE(42,134,"SCL","start") +
+  W([[132,42],[132,55]]) + RESV(132,74,"Rp",got(o,"Effective pull-up resistance")) + W([[132,93],[132,100]]) +
+  W([[260,42],[260,55]]) + RESV(260,74,"Rp",got(o,"Effective pull-up resistance")) + W([[260,93],[260,96]]) + JUMPV(260,100,4) + W([[260,104],[260,148]]) +
+  DOT(340,100) + W([[340,100],[340,121]]) + CAPV(340,125,"Cbus / line",vv(r,"Cbus","")) + W([[340,129],[340,164]]) + GND(340,164) +
+  TX(200,190,"rise time (30–70 %) = "+gotv(o,"Actual rise time"),"middle","var(--kapton)",11.5) +
+  TX(200,212,"allowed R = "+gotv(o,"Minimum pull-up resistance")+" to "+gotv(o,"Maximum pull-up resistance"),"middle","var(--ink3)",10.5) +
+  TX(200,234,"sink current = "+gotv(o,"Low-level sink current"),"middle","var(--esd)",11), 400, 251);
+
+DIAGRAMS.lcinput = (r,o) => {
+  const pi=(r.kind||"LC filter")==="π input filter";
+  return SVG(
+    W([[30,70],[132,70]]) + NODE(30,55,"Vin","start") + VAL(76,55,vv(r,"Vnoise",""),"middle") +
+    INDH(156,70,"L",vv(r,"L","")) + W([[180,70],[344,70]]) + NODE(370,55,"Vout","end") +
+    (pi ? W([[92,70],[92,91]]) + CAPV(92,100,"Cin",vv(r,"Cin","")) + W([[92,104],[92,142]]) + GND(92,142) : "") +
+    W([[286,70],[286,91]]) + CAPV(286,100,"Cout",vv(r,"Cout","")) + W([[286,104],[286,142]]) + GND(286,142) +
+    TX(200,172,"resonance = "+gotv(o,"LC resonant frequency"),"middle","var(--ink3)",11) +
+    TX(200,194,"noise attenuation = "+gotv(o,"Estimated noise attenuation"),"middle","var(--kapton)",11.5) +
+    TX(200,216,"estimated Vout noise = "+gotv(o,"Estimated output noise"),"middle","var(--esd)",11), 400, 233);
+};
+
+DIAGRAMS.activefilter = (r,o) => {
+  const type=r.type||"Buffered RC low-pass", sk=type.startsWith("Sallen-Key"), high=type.includes("high-pass");
+  /* In Sallen–Key, the C1/R1 feedback branch returns to the op-amp output.
+     R3 and R4 form the non-inverting gain network: K = 1 + Rf/Rg. */
+  /* A real non-inverting stage rather than a block with K written in it:
+     Rg from the inverting input to ground, Rf from the output back to it,
+     which is where K = 1 + Rf/Rg actually comes from.                  */
+  const gainStage=(nodeX)=> OPAMP_PLUS_TOP(295,80,20) +
+    W([[nodeX,80],[264,80],[264,70],[295,70]]) +
+    W([[295,90],[277,90],[277,112]]) + DOT(277,105) +
+    RESVSHORT(277,125,"Rg",vv(r,"Rg","")) + W([[277,138],[277,152]]) + GND(277,152) +
+    W([[277,105],[316,105]]) + RESH(335,105,"Rf",vv(r,"Rf","")) + W([[354,105],[373,105],[373,80]]) +
+    W([[330,80],[418,80]]) + DOT(373,80) + NODE(436,65,"Vout","end");
+  /* the caption has room for a value, not for a sentence. When Q has no
+     number the row carries its whole message in the note, which is right
+     in the table and far too long here.                                */
+  const kNum = (()=>{ const g=parseSI(vv(r,"Rg","")), fb=parseSI(vv(r,"Rf",""));
+    return (isFinite(g)&&g>0&&isFinite(fb)) ? 1+fb/g : NaN; })();
+  const qTxt = (sk && isFinite(kNum) && kNum>=3) ? "∞ – oscillates" : gotv(o,"Sallen-Key Q");
+  const cx = 220;   /* both canvases are 440 wide now */
+  const captions=sk
+    ? TX(cx,200,"f0 = "+gotv(o,"Natural frequency f0")+"  ·  Q = "+qTxt,"middle","var(--ink3)",11) + TX(cx,222,"gain @ f = "+gotv(o,"Magnitude at test frequency")+"  ·  "+gotv(o,"Attenuation at test frequency"),"middle","var(--kapton)",11.5) + TX(cx,244,"equal-component Sallen–Key  ·  K = 1 + Rf/Rg = "+gotv(o,"Passband gain"),"middle","var(--esd)",11)
+    : TX(200,185,"fc = "+gotv(o,"Corner frequency (−3 dB)")+"  ·  τ = "+gotv(o,"Time constant τ"),"middle","var(--ink3)",11) + TX(200,207,"gain @ f = "+gotv(o,"Magnitude at test frequency")+"  ·  "+gotv(o,"Attenuation at test frequency"),"middle","var(--kapton)",11.5) + TX(200,229,"buffered RC  ·  K = 1 + Rf/Rg = "+gotv(o,"Passband gain"),"middle","var(--esd)",11);
+  if(!sk){
+    const series=high ? CAPH(110,80,"C",vv(r,"C","")) : RESH(110,80,"R",vv(r,"R",""));
+    const left=high ? 106 : 91, right=high ? 114 : 129;
+    const shunt=high ? RESV(200,120,"R",vv(r,"R","")) : CAPV(200,105,"C",vv(r,"C",""));
+    const branch=high ? W([[200,80],[200,101]]) + shunt + W([[200,139],[200,152]]) : W([[200,80],[200,101]]) + shunt + W([[200,109],[200,152]]);
+    return SVG(W([[28,80],[left,80]]) + NODE(28,65,"Vin","start") + series + W([[right,80],[200,80]]) + DOT(200,80) + branch + GND(200,152) + gainStage(200) + captions,440,246);
+  }
+  const first=high ? CAPH(100,90,"C1",vv(r,"C","")) : RESH(100,90,"R1",vv(r,"R",""));
+  const second=high ? CAPH(175,90,"C2",vv(r,"C","")) : RESH(175,90,"R2",vv(r,"R",""));
+  const firstLeft=high?96:81, firstRight=high?104:119, secondLeft=high?171:156, secondRight=high?179:194;
+  /* The feedback element returns to the op-amp output, and so does R4. Both
+     land on the output rail rather than on each other, which is why the rail
+     runs well past the triangle before it reaches Vout.                   */
+  const outputFeedback=high
+    ? W([[135,90],[135,35],[181,35]]) + RESH(200,35,"R1",vv(r,"R","")) + W([[219,35],[400,35],[400,85]])
+    : W([[135,90],[135,35],[196,35]]) + CAPH(200,35,"C1",vv(r,"C","")) + W([[204,35],[400,35],[400,85]]);
+  const grounded=high
+    ? W([[210,90],[210,106]]) + RESV(210,125,"R2",vv(r,"R","")) + W([[210,144],[210,168]]) + GND(210,168)
+    : W([[210,90],[210,116]]) + CAPV(210,120,"C2",vv(r,"C","")) + W([[210,124],[210,168]]) + GND(210,168);
+  /* Rg to ground and Rf to the output hang below the op-amp with room of
+     their own. Tucked against the triangle they printed on top of it.    */
+  /* The pins sit where the + and − are drawn - half the half-height in from
+     the tip - not on the triangle's corners, which is where the wires used to
+     land. Raising the whole stage leaves the Rg/Rf junction room to be a
+     junction rather than a pile.                                          */
+  const amp = OPAMP_PLUS_TOP(295,85,20) +
+    W([[210,90],[264,90],[264,75],[295,75]]) +
+    /* the junction sits clear above Rg rather than on its top edge, so the
+       lead into the resistor reads as a lead and not as a collision      */
+    W([[295,95],[277,95],[277,125]]) + DOT(277,117) +
+    RESVSHORT(277,138,"Rg",vv(r,"Rg","")) + W([[277,151],[277,168]]) + GND(277,168) +
+    W([[277,117],[316,117]]) + RESH(335,117,"Rf",vv(r,"Rf","")) + W([[354,117],[373,117],[373,85]]) +
+    W([[330,85],[418,85]]) + DOT(373,85) + DOT(400,85) + NODE(436,70,"Vout","end");
+  return SVG(W([[28,90],[firstLeft,90]]) + NODE(28,75,"Vin","start") + first + W([[firstRight,90],[135,90],[secondLeft,90]]) + DOT(135,90) + second + W([[secondRight,90],[210,90]]) + DOT(210,90) + outputFeedback + grounded + amp + captions,440,265);
+};
+
+DIAGRAMS.inductor = (r,o) => SVG(
+  W([[26,86],[112,86]]) + NODE(26,70,"converter","start") + INDH(136,86,"L",vv(r,"L","")) + W([[160,86],[238,86]]) + BOX(238,57,72,58,"CORE","") + W([[310,86],[370,86]]) + NODE(370,70,"load","end") +
+  ARROW(188,55,188,78,"Ipeak") +
+  TX(200,174,"Ipeak = "+gotv(o,"Peak inductor current")+"  ·  Irms = "+gotv(o,"Inductor RMS current"),"middle","var(--ink3)",11) +
+  TX(200,196,"saturation margin = "+gotv(o,"Saturation current margin"),"middle","var(--kapton)",11.5) +
+  TX(200,218,"core flux = "+gotv(o,"Estimated core flux density")+"  ·  T = "+gotv(o,"Estimated winding temperature"),"middle","var(--esd)",10.5), 400, 235);
+
+DIAGRAMS.tvs = (r,o) => SVG(
+  W([[28,78],[82,78]]) + NODE(28,48,"Vsurge","start") + VAL(28,66,vv(r,"Vsurge",""),"start") + RESH(102,78,"Rsource",vv(r,"Rsource","")) + W([[121,78],[236,78]]) + DOT(236,78) + W([[236,78],[356,78]]) + NODE(370,62,"protected input","end") +
+  W([[236,78],[236,102]]) + ZENER(236,110) + W([[236,118],[236,148]]) + GND(236,148) +
+  TX(200,178,"clamp current = "+gotv(o,"Calculated surge current"),"middle","var(--ink3)",11) +
+  TX(200,200,"TVS peak power = "+gotv(o,"TVS peak power"),"middle","var(--kapton)",11.5) +
+  TX(200,222,"pulse energy ≈ "+gotv(o,"Estimated pulse energy"),"middle","var(--esd)",11), 400, 239);
 
 DIAGRAMS.bjt = (r,o) => SVG(
   W([[20,140],[71,140]]) + NODE(20,118,"GPIO","start") + VAL(20,132,vv(r,"Vdrive",""),"start") +
@@ -1982,6 +2316,181 @@ const EXTRA_CALCS = [
    return out;
  }},
 
+{id:"tempsense", group:"Measurement", name:"NTC, PT100 & RTD",
+ note:"An NTC is shown as a practical voltage divider: choose whether it is Rtop or Rbot, then enter the supply and fixed resistor to get Vout. PT100/PT1000 use current excitation and the IEC 60751 platinum RTD model. For an RTD resistance-to-temperature conversion, enter the measured total (sensor plus two lead wires) and the total lead resistance separately.",
+ fields:[FS("sensor","Sensor type",["NTC (Beta)","PT100 (IEC 60751)","PT1000 (IEC 60751)","Custom IEC RTD"],"NTC (Beta)"),
+         FS("mode","Calculation",["Temperature → resistance","Resistance → temperature"],"Temperature → resistance"),
+         {...F("T","Input temperature","°C","25"),showWhen:{k:"mode",is:"Temperature → resistance"}},
+         {...F("Rmeas","Measured resistance (RTD: sensor + leads)","Ω","10k"),showWhen:{k:"mode",is:"Resistance → temperature"}},
+         {...F("R25","NTC resistance at 25 °C","Ω","10k"),showWhen:{k:"sensor",is:"NTC (Beta)"}},
+         {...F("beta","NTC beta constant","K","3950"),showWhen:{k:"sensor",is:"NTC (Beta)"}},
+         {...FS("ntcPosition","NTC divider position",["NTC as Rtop (to Vbias)","NTC as Rbot (to GND)"],"NTC as Rtop (to Vbias)"),showWhen:{k:"sensor",is:"NTC (Beta)"}},
+         {...F("Vbias","NTC divider supply","V","3.3","3.3"),showWhen:{k:"sensor",is:"NTC (Beta)"}},
+         {...F("Rfixed","NTC fixed divider resistor","Ω","10k","10k"),showWhen:{k:"sensor",is:"NTC (Beta)"}},
+         {...F("R0","Custom RTD resistance at 0 °C","Ω","100"),showWhen:{k:"sensor",is:"Custom IEC RTD"}},
+         {...F("Rlead","Two-wire total lead resistance","Ω","0"),showWhen:{k:"sensor",is:["PT100 (IEC 60751)","PT1000 (IEC 60751)","Custom IEC RTD"]}},
+         {...F("Iexc","RTD excitation current","A","100u"),showWhen:{k:"sensor",is:["PT100 (IEC 60751)","PT1000 (IEC 60751)","Custom IEC RTD"]}},
+         F("E","Sensor dissipation factor E","mW/°C","2.5")],
+ run(v){
+   const {sensor,mode,T,Rmeas,R25,beta,ntcPosition,Vbias,Rfixed,R0,Rlead,Iexc,E}=v;
+   const isNTC=sensor==="NTC (Beta)", tempToR=mode==="Temperature → resistance";
+   const ntcTop=ntcPosition==="NTC as Rtop (to Vbias)";
+   const r0=sensor==="PT100 (IEC 60751)" ? 100 : sensor==="PT1000 (IEC 60751)" ? 1000 : R0;
+   if((tempToR&&!isFinite(T))||(!tempToR&&!isFinite(Rmeas))||!isFinite(E)||E<=0||
+      (isNTC&&(!isFinite(R25)||!isFinite(beta)||!isFinite(Vbias)||!isFinite(Rfixed)||R25<=0||beta<=0||Vbias<=0||Rfixed<=0))||
+      (!isNTC&&(!isFinite(r0)||!isFinite(Rlead)||!isFinite(Iexc)||r0<=0||Rlead<0||Iexc<0))) return null;
+   let temperature, sensorR;
+   if(tempToR){
+     temperature=T;
+     sensorR=isNTC ? ntcResistance(temperature,R25,beta) : rtdResistance(temperature,r0);
+   }else{
+     sensorR=isNTC ? Rmeas : Rmeas-Rlead;
+     if(sensorR<=0) return [R("Sensor resistance",null,"",isNTC?"measured NTC resistance must be positive":"measured total RTD resistance must exceed total lead resistance")];
+     temperature=isNTC ? ntcTemperature(sensorR,R25,beta) : rtdTemperature(sensorR,r0);
+   }
+   if(!isFinite(sensorR)||!isFinite(temperature)||temperature<=-273.15)
+     return [R("Temperature",null,"","resistance is outside the selected sensor model's usable range")];
+   const sensitivity=isNTC ? ntcSensitivity(temperature,sensorR,beta) : rtdSensitivity(temperature,r0);
+   const sensorCurrent=isNTC ? Vbias/(sensorR+Rfixed) : Iexc;
+   const power=sensorCurrent*sensorCurrent*sensorR, selfHeat=power*1000/E;
+   const out=[R("Sensor resistance",sensorR,"Ω"),R(tempToR?"Sensor temperature (entered)":"Calculated sensor temperature",temperature,"°C"),
+              R("Resistance sensitivity",sensitivity,"Ω/°C")];
+   if(isNTC){
+     const vout=Vbias*(ntcTop ? Rfixed : sensorR)/(sensorR+Rfixed);
+     out.push(R("NTC divider output",vout,"V",ntcTop?"NTC is Rtop (to supply); fixed resistor is Rbot":"fixed resistor is Rtop; NTC is Rbot (to ground)"),
+              R("NTC divider current",sensorCurrent,"A","supply ÷ (NTC + fixed resistor)"),
+              R("NTC sensor voltage",ntcTop?Vbias-vout:vout,"V"));
+   }else{
+     const leadError=Rlead/Math.abs(sensitivity);
+     out.push(R("Total resistance incl. leads",sensorR+Rlead,"Ω"),
+              R("Lead-induced temperature error",leadError,"°C","two-wire estimate; 3-wire or 4-wire RTD connections cancel most lead error"),
+              R("Excitation voltage",Iexc*(sensorR+Rlead),"V"));
+   }
+   out.push(R("Sensor dissipation",power,"W","I² × sensor resistance"),
+            R("Estimated self-heating rise",selfHeat,"°C","sensor power ÷ entered dissipation factor"));
+   if(!tempToR) out.push(R("Estimated medium temperature",temperature-selfHeat,"°C","calculated sensor temperature minus estimated self-heating"));
+   if(!isNTC) out.push(R("IEC RTD range check",temperature>=-200&&temperature<=850?"Within −200 to 850 °C":"Outside IEC 60751 range",""));
+   if(selfHeat>0.1) out.push(R("Self-heating advice",null,"","Lower the excitation current or use a sensor with a higher dissipation factor if this error is too large."));
+   return out;
+ }} ,
+
+{id:"snubber", group:"Power", name:"RC snubber & RCD clamp",
+ note:"First-pass damping and clamp sizing. RC snubber loss is estimated as C × V² × switching frequency. RCD values use leakage-inductance energy; verify parasitics and waveform voltage on the actual converter.",
+ fields:[FS("kind","Network",["RC snubber","RCD clamp"],"RC snubber"),
+         {...F("Vsw","Switching voltage","V","100"),showWhen:{k:"kind",is:"RC snubber"}},
+         {...F("fs","Switching frequency","Hz","100k"),showWhen:{k:"kind",is:"RC snubber"}},
+         {...F("Lstray","Stray loop inductance","H","100n"),showWhen:{k:"kind",is:"RC snubber"}},
+         {...F("Cpar","Existing node capacitance","F","100p"),showWhen:{k:"kind",is:"RC snubber"}},
+         {...F("Csnub","Snubber capacitor","F","1n"),showWhen:{k:"kind",is:"RC snubber"}},
+         {...F("Rsnub","Snubber resistor","Ω","100"),showWhen:{k:"kind",is:"RC snubber"}},
+         {...F("Lleak","Transformer leakage inductance","H","2u"),showWhen:{k:"kind",is:"RCD clamp"}},
+         {...F("Ipk","Primary peak current","A","2"),showWhen:{k:"kind",is:"RCD clamp"}},
+         {...F("fsRcd","Switching frequency","Hz","100k"),showWhen:{k:"kind",is:"RCD clamp"}},
+         {...F("Vclamp","RCD clamp voltage","V","150"),showWhen:{k:"kind",is:"RCD clamp"}},
+         {...F("Cclamp","Clamp capacitor","F","10n"),showWhen:{k:"kind",is:"RCD clamp"}},
+         {...F("Rclamp","Clamp resistor","Ω","100k"),showWhen:{k:"kind",is:"RCD clamp"}}],
+ run(v){
+   if(v.kind==="RC snubber"){
+     const {Vsw,fs,Lstray,Cpar,Csnub,Rsnub}=v;
+     if(!isFinite(Vsw)||!isFinite(fs)||!isFinite(Lstray)||!isFinite(Cpar)||!isFinite(Csnub)||!isFinite(Rsnub)||
+        Vsw<=0||fs<=0||Lstray<=0||Cpar<0||Csnub<=0||Rsnub<=0) return null;
+     const cTotal=Cpar+Csnub, fr=1/(2*Math.PI*Math.sqrt(Lstray*cTotal));
+     const z0=Math.sqrt(Lstray/Csnub), rcrit=2*z0, p=Csnub*Vsw*Vsw*fs;
+     return [R("Total node capacitance",cTotal,"F"),R("Ringing frequency",fr,"Hz","from stray inductance and total node capacitance"),
+             R("Snubber characteristic impedance",z0,"Ω"),R("Critical damping resistance",rcrit,"Ω","2 × √(L/C); tune on the measured ringing waveform"),
+             R("Selected-to-critical resistance",Rsnub/rcrit,"×"),R("Initial resistor current",Vsw/Rsnub,"A"),
+             R("RC snubber dissipation",p,"W","Csnub × Vswitch² × switching frequency"),
+             R("Suggested resistor rating",2*p,"W","minimum 2× continuous dissipation margin")];
+   }
+   const {Lleak,Ipk,fsRcd,Vclamp,Cclamp,Rclamp}=v;
+   if(!isFinite(Lleak)||!isFinite(Ipk)||!isFinite(fsRcd)||!isFinite(Vclamp)||!isFinite(Cclamp)||!isFinite(Rclamp)||
+      Lleak<=0||Ipk<=0||fsRcd<=0||Vclamp<=0||Cclamp<=0||Rclamp<=0) return null;
+   const energy=.5*Lleak*Ipk*Ipk, p=energy*fsRcd, iAvg=p/Vclamp, dv=energy/(Cclamp*Vclamp), rNeed=Vclamp*Vclamp/p;
+   return [R("Leakage energy per cycle",energy,"J","½ × Lleak × Ipeak²"),R("RCD clamp dissipation",p,"W","leakage energy × switching frequency"),
+           R("Average clamp current",iAvg,"A"),R("Clamp capacitor ripple",dv,"V","approximate change in capacitor voltage per switching event"),
+           R("Recommended clamp resistor",rNeed,"Ω","Vclamp² ÷ clamp dissipation"),R("Selected resistor dissipation at clamp",Vclamp*Vclamp/Rclamp,"W"),
+           R("Suggested resistor rating",2*p,"W","minimum 2× clamp-loss margin")];
+ }},
+
+{id:"i2c", group:"Measurement", name:"I²C pull-up & bus capacitance",
+ note:"Checks the I²C pull-up window from bus capacitance, rise time and guaranteed low-level sink current. The rise-time model is the standard 30–70 % RC approximation; use actual measured bus capacitance for a final design.",
+ fields:[F("Vdd","Bus supply","V","3.3"),FS("speed","I²C speed class",["Standard mode (100 kHz)","Fast mode (400 kHz)","Fast-mode Plus (1 MHz)"],"Fast mode (400 kHz)"),
+         F("Cbus","Bus capacitance per line","F","200p"),F("Rpull","One fitted pull-up resistor","Ω","4.7k"),F("Npull","Parallel pull-ups per line","×","1"),
+         F("Vol","Maximum valid logic-low voltage","V","0.4"),F("Iol","Guaranteed low-level sink current","A","3m")],
+ run(v){
+   const {Vdd,speed,Cbus,Rpull,Npull,Vol,Iol}=v;
+   if(!isFinite(Vdd)||!isFinite(Cbus)||!isFinite(Rpull)||!isFinite(Npull)||!isFinite(Vol)||!isFinite(Iol)||
+      Vdd<=0||Cbus<=0||Rpull<=0||Npull<=0||Vol<0||Vol>=Vdd||Iol<=0) return null;
+   const trLimit=speed.startsWith("Standard") ? 1e-6 : speed.startsWith("Fast mode") ? 300e-9 : 120e-9;
+   const rMin=(Vdd-Vol)/Iol, rMax=trLimit/(0.8473*Cbus), rEff=Rpull/Math.max(1,Math.round(Npull));
+   const tr=.8473*rEff*Cbus, iLow=(Vdd-Vol)/rEff, pLow=Vdd*Vdd/rEff;
+   const e24=e24AtMost(rMax), windowOk=rMin<=rMax;
+   const out=[R("Rise-time limit",trLimit,"s",speed),R("Minimum pull-up resistance",rMin,"Ω","below this, a device may not sink the line within VOL"),
+              R("Maximum pull-up resistance",rMax,"Ω","above this, the RC rise time exceeds the selected I²C limit"),
+              R("Effective pull-up resistance",rEff,"Ω","one fitted resistor ÷ number of parallel pull-ups"),
+              R("Actual rise time",tr,"s","30–70 % rise-time estimate"),R("Rise-time utilisation",100*tr/trLimit,"%"),
+              R("Low-level sink current",iLow,"A","at the entered VOL"),R("One-line static low power",pLow,"W","while that bus line is held low")];
+   if(windowOk) out.push(R("Largest E24 pull-up",e24,"Ω",e24>=rMin?"within the calculated window":"no E24 value fits; reduce bus capacitance or choose another speed class"));
+   else out.push(R("Pull-up window",null,"","No valid resistor window: the required sink current and rise time conflict. Reduce bus capacitance, lower the speed, or use an I²C buffer."));
+   return out;
+ }},
+
+{id:"lcinput", group:"Filters", name:"LC / π input filter",
+ note:"Estimates an LC input filter's resonance, damping and attenuation at one noise frequency. A π filter adds an input capacitor; verify converter input-impedance stability and capacitor ripple-current ratings on the real design.",
+ fields:[FS("kind","Topology",["LC filter","π input filter"],"LC filter"),F("Vnoise","Input noise amplitude","V","1"),F("fnoise","Noise frequency","Hz","100k"),
+         F("L","Series inductor","H","10u"),{...F("Cin","Input capacitor for π filter","F","10u"),showWhen:{k:"kind",is:"π input filter"}},
+         F("Cout","Output capacitor","F","10u"),F("Rseries","Total series damping resistance","Ω","100m")],
+ run(v){
+   const {kind,Vnoise,fnoise,L,Cin,Cout,Rseries}=v, pi=kind==="π input filter";
+   if(!isFinite(Vnoise)||!isFinite(fnoise)||!isFinite(L)||!isFinite(Cout)||!isFinite(Rseries)||
+      Vnoise<0||fnoise<=0||L<=0||Cout<=0||Rseries<=0||(pi&&(!isFinite(Cin)||Cin<=0))) return null;
+   const cEq=pi ? Cin*Cout/(Cin+Cout) : Cout, f0=1/(2*Math.PI*Math.sqrt(L*cEq)), z0=Math.sqrt(L/cEq), q=z0/Rseries;
+   const ratio=fnoise/f0, gain=1/Math.sqrt(Math.pow(1-ratio*ratio,2)+Math.pow(ratio/q,2)), att=20*Math.log10(gain);
+   const out=[R("Effective filter capacitance",cEq,"F"),R("LC resonant frequency",f0,"Hz"),R("Characteristic impedance",z0,"Ω"),
+              R("Estimated Q",q,"×","uses the entered total series resistance"),R("Suggested damping resistance",z0,"Ω","starting value for a series-RC damping branch; tune by measurement"),
+              R("Estimated noise attenuation",att,"dB","small-signal second-order estimate at the entered noise frequency"),R("Estimated output noise",Vnoise*gain,"V")];
+   if(Math.abs(ratio-1)<0.4&&q>1) out.push(R("Resonance warning",null,"","Noise is near a high-Q LC resonance; add damping and verify the converter remains stable."));
+   return out;
+ }},
+
+{id:"inductor", group:"Power", name:"Inductor saturation & core check",
+ note:"Checks peak current, RMS copper loss, temperature and a first-pass flux-density estimate. Saturation and core-loss curves are material- and temperature-dependent, so always retain the inductor/core datasheet margin.",
+ fields:[F("L","Inductance","H","10u"),F("Iavg","Average inductor current","A","5"),F("dI","Peak-to-peak ripple current","A","2"),F("Isat","Datasheet saturation current","A","8"),
+         F("DCR","Winding DCR","Ω","20m"),F("Rth","Inductor thermal resistance","°C/W","25"),F("Tamb","Ambient temperature","°C","25"),F("Tmax","Maximum winding temperature","°C","125"),
+         F("Nturns","Core turns","×","20"),F("Ae","Core effective area","mm²","25"),F("Bsat","Core saturation flux density","T","0.3")],
+ run(v){
+   const {L,Iavg,dI,Isat,DCR,Rth,Tamb,Tmax,Nturns,Ae,Bsat}=v;
+   if(!isFinite(L)||!isFinite(Iavg)||!isFinite(dI)||!isFinite(Isat)||!isFinite(DCR)||!isFinite(Rth)||!isFinite(Tamb)||!isFinite(Tmax)||!isFinite(Nturns)||!isFinite(Ae)||!isFinite(Bsat)||
+      L<=0||Iavg<0||dI<0||Isat<=0||DCR<0||Rth<0||Tmax<=Tamb||Nturns<=0||Ae<=0||Bsat<=0) return null;
+   const iPeak=Iavg+dI/2, iMin=Math.max(0,Iavg-dI/2), iRms=Math.sqrt(Iavg*Iavg+dI*dI/12), pCu=iRms*iRms*DCR, rise=pCu*Rth, temp=Tamb+rise;
+   const energy=.5*L*iPeak*iPeak, b=L*iPeak/(Nturns*Ae*1e-6), satMargin=Isat/iPeak, fluxMargin=Bsat/b;
+   const out=[R("Peak inductor current",iPeak,"A"),R("Minimum inductor current",iMin,"A"),R("Inductor RMS current",iRms,"A"),
+              R("Saturation current margin",satMargin,"×",satMargin<1?"Not acceptable — peak current exceeds the entered saturation rating":"datasheet saturation rating ÷ calculated peak current"),
+              R("Stored energy at peak",energy,"J"),R("Copper dissipation",pCu,"W","Irms² × DCR"),R("Estimated temperature rise",rise,"°C"),R("Estimated winding temperature",temp,"°C"),
+              R("Estimated core flux density",b,"T","L × Ipeak ÷ (turns × core area)"),R("Flux-density margin",fluxMargin,"×",fluxMargin<1?"Not acceptable — estimated flux exceeds the entered saturation flux density":"entered Bsat ÷ calculated peak flux")];
+   if(temp>Tmax) out.push(R("Thermal warning",null,"","Estimated winding temperature exceeds the entered limit; select a lower-DCR or better-cooled inductor."));
+   return out;
+ }},
+
+{id:"tvs", group:"Components", name:"TVS / surge protection",
+ note:"Sizes a shunt TVS from the surge source impedance and pulse shape. It estimates what reaches the protected node; check the TVS datasheet's specified waveform, repetition rate, temperature derating and coordinated fuse or series protection.",
+ fields:[F("Vline","Maximum normal line voltage","V","24"),F("Vsurge","Surge source voltage","V","100"),F("Vwm","TVS standoff voltage VWM","V","26"),F("Vclamp","TVS clamp voltage at IPP","V","43"),
+         F("Rsource","Surge source / series impedance","Ω","2"),F("Ipp","TVS rated peak pulse current","A","10"),F("tp","Surge pulse duration","s","100u"),F("shape","Pulse energy shape factor","×","0.5")],
+ run(v){
+   const {Vline,Vsurge,Vwm,Vclamp,Rsource,Ipp,tp,shape}=v;
+   if(!isFinite(Vline)||!isFinite(Vsurge)||!isFinite(Vwm)||!isFinite(Vclamp)||!isFinite(Rsource)||!isFinite(Ipp)||!isFinite(tp)||!isFinite(shape)||
+      Vline<0||Vsurge<=0||Vwm<=0||Vclamp<=0||Rsource<=0||Ipp<=0||tp<=0||shape<=0) return null;
+   const i=Math.max(0,(Vsurge-Vclamp)/Rsource), p=Vclamp*i, e=shape*p*tp, rNeed=Math.max(0,(Vsurge-Vclamp)/Ipp), util=100*i/Ipp;
+   const out=[R("Continuous-voltage margin",Vwm-Vline,"V",Vwm>=Vline?"TVS standoff is above the normal line voltage":"Not acceptable — choose VWM above the normal line voltage"),
+              R("Protected-node clamp voltage",Vclamp,"V"),R("Calculated surge current",i,"A","(surge source voltage − clamp voltage) ÷ source impedance"),
+              R("Peak-current utilisation",util,"%","must remain below the TVS pulse-current rating for the specified waveform"),
+              R("TVS peak power",p,"W"),R("Estimated pulse energy",e,"J","shape factor × clamp power × pulse duration"),
+              R("Minimum series impedance for rated IPP",rNeed,"Ω","required to keep current at or below the entered IPP")];
+   if(Vsurge<=Vclamp) out.push(R("Clamping note",null,"","The entered surge does not exceed the clamp voltage, so this first-pass model predicts no TVS current."));
+   else if(Vwm<Vline||util>100) out.push(R("TVS selection warning",null,"","Select a higher-VWM or higher-IPP TVS, or add series impedance/fuse coordination."));
+   return out;
+ }},
+
 {id:"bjt", group:"Power", name:"BJT base resistor",
  note:"NPN low-side switch sizing. Use a forced gain well below the datasheet hFE so the transistor reaches saturation instead of trusting a typical gain figure.",
  fields:[F("Vdrive","GPIO / drive voltage","V","3.3"),F("Vload","Load supply","V","12"),
@@ -2126,7 +2635,16 @@ function viewCalc(){
   const c = calcById(ui.calc);
   calcSeed(c);
   const raw = ui.calcVals[c.id] || {};
-  const shownFields = c.fields.filter(f=>!f.showWhen || (raw[f.showWhen]!==false && raw[f.showWhen]!=="false"));
+  const shownFields = c.fields.filter(f=>{
+    if(!f.showWhen) return true;
+    /* A string retains the old checkbox behaviour.  Select-driven fields use
+       {k:"field",is:"selected value"}, and fall back to the control's default
+       before the page has stored a value for it. */
+    if(typeof f.showWhen==="string") return raw[f.showWhen]!==false && raw[f.showWhen]!=="false";
+    const control=c.fields.find(x=>x.k===f.showWhen.k);
+    const current=raw[f.showWhen.k]!==undefined&&raw[f.showWhen.k]!=="" ? raw[f.showWhen.k] : (control&&(control.def||control.opts&&control.opts[0]));
+    return Array.isArray(f.showWhen.is) ? f.showWhen.is.includes(current) : current===f.showWhen.is;
+  });
   return `<div class="panel"><h2>${esc(c.name)}</h2>
       ${c.note?`<p>${esc(c.note)}</p>`:""}
       <div class="form" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
@@ -2154,11 +2672,16 @@ function viewCalc(){
 
 const ALIAS = {
   cable:"awg gauge resistivity", wire:"awg gauge resistivity", smd:"eia96",
-  rc:"cutoff corner", lc:"resonant", buck:"smps", boost:"smps", ldo:"dropout",
+  rc:"cutoff corner low-pass high-pass rl rlc band-pass band-stop notch", lc:"resonant", buck:"smps", boost:"smps", ldo:"dropout",
   batt:"mah", divider:"potential thevenin loaded impedance", react:"impedance", rcolor:"stripes",
   shunt:"burden", zener:"clamp",
   adc:"sampling clamp protection error budget reference quantisation noise",
   opspeed:"op amp gbw bandwidth slew rate full power",
+  tempsense:"thermistor ntc pt100 pt1000 rtd temperature resistance self heating",
+  snubber:"rc rcd clamp damping ringing flyback leakage", i2c:"sda scl pullup pull-up rise time bus capacitance",
+  lcinput:"pi π input filter emi damping resonance", activefilter:"active op amp sallen key low-pass high-pass q",
+  inductor:"saturation core flux ripple dcr thermal",
+  tvs:"surge transient esd clamp protection standoff ipp",
   bjt:"transistor base saturation gpio", rectifier:"bridge transformer mains reservoir smoothing inrush"
 };
 
@@ -2166,7 +2689,7 @@ const ALIAS = {
 function viewAbout(){
   const short = u => esc(u.replace("https://",""));
   return `<div class="panel"><h2>Circuit Calcs ${esc(APP_VERSION)}</h2>
-      <p>Twenty-nine bench calculators, each drawn as the circuit it is describing, with the drawing
+      <p>Thirty-seven bench calculators, each drawn as the circuit it is describing, with the drawing
          redrawn as you type. It is a single HTML file: no server to run, no build step, no account to
          make, no dependency to install. Open it in a browser and it works — from a hard disk, from a
          USB stick, or from any address you care to serve it at.</p>
@@ -2314,7 +2837,21 @@ document.addEventListener("change", ev=>{
     const c = calcById(ui.calc);
     ui.calcVals[c.id] = ui.calcVals[c.id] || {};
     ui.calcVals[c.id][ev.target.dataset.ck] = ev.target.type==="checkbox" ? ev.target.checked : ev.target.value;
-    if(ev.target.type==="checkbox"){ render(); return; }
+    /* A 10 kΩ NTC default is meaningless for a platinum RTD.  Changing the
+       sensor, or entering inverse RTD mode with an out-of-range saved value,
+       starts resistance-to-temperature at the appropriate 0 °C reference. */
+    if(c.id==="tempsense"){
+      const vals=ui.calcVals[c.id], type=vals.sensor||"NTC (Beta)", key=ev.target.dataset.ck;
+      const reference=type==="PT1000 (IEC 60751)" ? "1k" : type==="NTC (Beta)" ? "10k" : (vals.R0||"100");
+      const r0=type==="PT100 (IEC 60751)" ? 100 : type==="PT1000 (IEC 60751)" ? 1000 : parseSI(vals.R0||"100","Ω");
+      const measured=parseSI(vals.Rmeas,"Ω"), lead=parseSI(vals.Rlead||"0","Ω");
+      const inverseRTD=key==="mode" && vals.mode==="Resistance → temperature" && type!=="NTC (Beta)";
+      const invalidRTD=!isFinite(rtdTemperature(measured-lead,r0));
+      if(key==="sensor" || (inverseRTD&&invalidRTD)) vals.Rmeas=reference;
+    }
+    /* Selects can control which fields are relevant, just like checkboxes.
+       Rebuild the form so dependent inputs and the live schematic agree. */
+    if(ev.target.type==="checkbox" || ev.target.tagName==="SELECT"){ render(); return; }
     reRun();
   }
 });

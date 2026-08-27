@@ -1,6 +1,6 @@
 # Circuit Calcs
 
-Twenty-nine bench calculators in a single HTML file. Each one draws the circuit it is describing,
+Thirty-seven bench calculators in a single HTML file. Each one draws the circuit it is describing,
 and the drawing redraws as you type.
 
 **[Open it →](https://ajengineering.github.io/circuit-calcs/)**
@@ -16,13 +16,13 @@ pulled out and will keep working long after anyone stops maintaining it.
 
 | Group | Calculators |
 |---|---|
-| Basics | Ohm's law & power · voltage divider · voltage divider with load · LED series resistor |
-| Components | Resistor colour code · SMD resistor code · series & parallel · reactance Xc and XL |
-| Filters | RC filter & time constant · LC resonance |
+| Basics | Ohm's law & power · voltage divider, loaded or not · LED series resistor |
+| Components | Resistor colour code · SMD resistor code · series & parallel · reactance Xc and XL · TVS / surge protection |
+| Filters | Passive RC/RL/RLC filters · active op-amp filters · differential low-pass on a difference amp · LC resonance · LC / π input filter |
 | Op-amps | Inverting · non-inverting · difference · comparator with hysteresis · bandwidth & slew rate |
-| Power | Adjustable regulator · linear regulator dissipation · buck · boost · zener shunt · BJT base resistor · bridge rectifier, transformer & smoothing · MOSFET gate drive & losses · heatsink selection |
+| Power | Adjustable regulator · linear regulator dissipation · buck · boost · zener shunt · BJT base resistor · bridge rectifier, transformer & smoothing · MOSFET gate drive & losses · RC snubber & RCD clamp · inductor saturation & core check · heatsink selection |
 | Wire | Wire resistance from diameter · cable size & voltage drop |
-| Measurement | Current sense shunt · ADC input front-end · PCB trace current & width · battery runtime |
+| Measurement | Current sense shunt · ADC input front-end · NTC, PT100 & RTD · I²C pull-up & bus capacitance · PCB trace current & width · battery runtime |
 
 ## Engineering notation, in and out
 
@@ -53,7 +53,8 @@ https://ajengineering.github.io/circuit-calcs/calc.html#cable
 
 The id is the one in the search box results — `ohm`, `divider`, `led`, `rcolor`, `smd`,
 `netcombo`, `react`, `rc`, `lc`, `opinv`, `opnon`, `opdiff`, `hyst`, `opspeed`, `reg`, `ldo`, `buck`, `boost`,
-`zener`, `bjt`, `rectifier`, `fet`, `heatsink`, `wire`, `cable`, `shunt`, `adc`, `trace`, `batt`.
+`zener`, `bjt`, `rectifier`, `fet`, `snubber`, `inductor`, `heatsink`, `wire`, `cable`, `shunt`, `adc`, `tempsense`,
+`i2c`, `trace`, `batt`, `lcinput`, `activefilter`, `difflp`, `tvs`.
 
 `#about` opens the **About** tab, which carries the version, the licence, what the page keeps in
 your browser, and why these calculators are a separate file from the inventory they came out of.
