@@ -197,6 +197,18 @@ td.num{font-variant-numeric:tabular-nums}
 .f input,.f select,.f textarea{border:1px solid var(--rule);background:var(--paper);padding:7px 9px;
                                font-family:var(--mono);font-size:13px;border-radius:2px;outline:0;width:100%}
 .f input:focus,.f select:focus,.f textarea:focus{border-color:var(--kapton);background:#fff}
+/* Two kinds of box on a page with a device list: the ones the list fills,
+   and the ones only the board can answer. Tinting the first leaves the
+   second plain, which is the pair you have to fill in yourself.        */
+.notelist{margin:0 0 12px;padding-left:17px;color:var(--ink2);font-size:13px;line-height:1.6}
+.notelist li{margin:3px 0}
+.notelist li::marker{color:var(--ink3)}
+.f.fromlist input,.f.fromlist select{background:var(--esd-soft);border-color:#CBDDE7}
+.f.fromlist input:focus,.f.fromlist select:focus{background:#fff}
+.f.fromlist>.lab{color:var(--esd)}
+.listkey{font-size:11px;color:var(--ink3);margin:2px 0 8px}
+.listkey b{display:inline-block;width:11px;height:11px;border-radius:2px;
+           background:var(--esd-soft);border:1px solid #CBDDE7;vertical-align:-1px;margin-right:4px}
 .f small{color:var(--ink3);font-size:11px}
 .sheetbar{display:flex;gap:8px;margin-top:16px;align-items:center}
 .danger{color:var(--alert);border-color:var(--alert);background:none}
@@ -325,11 +337,12 @@ td.num{font-variant-numeric:tabular-nums}
   <section class="stage" id="stage"></section>
 </main>
 
+<div class="toast" id="toast" hidden></div>
 <noscript><div class="fatal">This viewer is not running JavaScript. Download the file and open it in Firefox, Chrome or Edge.</div></noscript>
 
 <script>
 "use strict";
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.2.0";
 const REPO_URL = "https://github.com/AJEngineering/circuit-calcs";
 const BIN_URL  = "https://github.com/AJEngineering/parts-bin-app";
 const $  = (s,r=document)=>r.querySelector(s);
@@ -340,8 +353,19 @@ const num = n => (Math.round(n*100)/100).toLocaleString("en-US");
 /* What the page remembers between visits: which calculator was open and what
    was typed into each. Nothing else - there is nothing else to keep.       */
 const KEY = "circuit-calcs-v1";
-const ui = {calc:"ohm", calcVals:{}, q:"", view:"calc"};
-function save(){ try{ localStorage.setItem(KEY, JSON.stringify({calc:ui.calc, calcVals:ui.calcVals})); }catch(e){} }
+const ui = {userParts:{}, calc:"ohm", calcVals:{}, q:"", view:"calc"};
+/* Saving or forgetting a device is worth one line of confirmation and one
+   chance to take it back. Eight seconds, then it clears itself.        */
+function toast(msg, undoLabel, undoFn){
+  const t = $("#toast");
+  if(!t) return;
+  t.innerHTML = `<span>${esc(msg)}</span>` + (undoFn?`<button class="undo">${esc(undoLabel)}</button>`:"");
+  t.hidden = false;
+  if(undoFn) t.querySelector(".undo").onclick = ()=>{ t.hidden=true; undoFn(); };
+  clearTimeout(t._t);
+  t._t = setTimeout(()=>{ t.hidden=true; }, undoFn?8000:2600);
+}
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify({calc:ui.calc, calcVals:ui.calcVals, userParts:ui.userParts})); }catch(e){} }
 function load(){
   try{
     const t = localStorage.getItem(KEY);
@@ -350,6 +374,7 @@ function load(){
     if(s && typeof s==="object"){
       if(s.calc) ui.calc = s.calc;
       if(s.calcVals && typeof s.calcVals==="object") ui.calcVals = s.calcVals;
+      if(s.userParts && typeof s.userParts==="object") ui.userParts = s.userParts;
     }
   }catch(e){}
 }
@@ -521,7 +546,7 @@ function ntcTemperature(r, r25, beta){
 function ntcSensitivity(t, r, beta){ return -beta*r/Math.pow(t+273.15,2); }
 const CALCS = [
 {id:"ohm", group:"Basics", name:"Ohm's law & power",
- note:"Fill any two boxes. The other two follow.",
+ note:["Fill any two boxes. The other two follow."],
  fields:[F("V","Voltage","V","12"),F("I","Current","A","0.5"),F("R","Resistance","\u03a9","24"),F("P","Power","W","6")],
  run(v){
    let {V,I,R:r,P} = v;
@@ -549,7 +574,10 @@ const CALCS = [
  }},
 
 {id:"rc", group:"Filters", name:"Passive filters",
- note:"Choose the transfer function first, then enter the part values and test frequency. RC and RL are first-order filters; the RLC options are a series-resonant band-pass (output across R) and band-stop (output across L + C).",
+ note:[
+  "Choose the transfer function first, then the part values and the test frequency.",
+  "RC and RL are first-order. The RLC options are series-resonant: band-pass taken across R, band-stop across L + C."
+ ],
  fields:[FS("type","Filter type",["RC low-pass","RC high-pass","RL low-pass","RL high-pass","RLC band-pass","RLC band-stop"],"RC low-pass"),
          F("R","Series / load resistance","Ω","10k"),
          {...F("C","Capacitance","F","100n"),showWhen:{k:"type",is:["RC low-pass","RC high-pass","RLC band-pass","RLC band-stop"]}},
@@ -582,7 +610,11 @@ const CALCS = [
  }},
 
 {id:"activefilter", group:"Filters", name:"Active filters (op-amp)",
- note:"The gain is set by the resistors that actually set it: Rg from the inverting input to ground, Rf from the output back to it, so K = 1 + Rf/Rg. Leave Rf at 0 for a plain buffer. The Sallen–Key options assume equal R1 = R2 and C1 = C2, which makes f0 = 1/(2πRC) and Q = 1/(3 − K); keep K below 3, and check the op-amp's bandwidth, slew rate and output swing.",
+ note:[
+  "The gain is set by the resistors that actually set it: Rg from the inverting input to ground, Rf from the output back to it, so K = 1 + Rf/Rg. Leave Rf at 0 for a plain buffer.",
+  "The Sallen\u2013Key options assume equal R1 = R2 and C1 = C2, which makes f0 = 1/(2\u03c0RC) and Q = 1/(3 \u2212 K).",
+  "Keep K below 3, and check the op-amp's bandwidth, slew rate and output swing before trusting any of it."
+ ],
  fields:[FS("type","Filter type",["Buffered RC low-pass","Buffered RC high-pass","Sallen-Key low-pass (equal R,C)","Sallen-Key high-pass (equal R,C)"],"Buffered RC low-pass"),
          F("R","Equal filter resistance R","Ω","10k"),F("C","Equal filter capacitance C","F","10n"),F("Rg","Rg to ground","Ω","10k"),F("Rf","Rf feedback","Ω","10k"),F("f","Test frequency","Hz","1k"),F("Vpp","Input, peak to peak (optional)","V","")],
  run(v){
@@ -622,7 +654,11 @@ const CALCS = [
  }},
 
 {id:"difflp", group:"Filters", name:"Differential low-pass (difference amp)",
- note:"A difference amplifier with a capacitor across each feedback resistor – the usual shape of a shunt current sensor. The gain is R2/R1 in the passband and rolls off above 1/(2π · R2 · Cf). Both legs have to match, capacitors included: a mismatch there is a common-mode rejection that falls away with frequency rather than a gain error you can trim out. The CMRR figure below is the ceiling the resistors alone set at DC: the amplifier's own CMRR, the capacitor tolerance and stray capacitance all sit under it, so treat it as the best the resistors will allow rather than what the board will do.",
+ note:[
+  "A difference amplifier with a capacitor across each feedback resistor \u2013 the usual shape of a shunt current sensor. The gain is R2/R1 in the passband and rolls off above 1/(2\u03c0 \u00b7 R2 \u00b7 Cf).",
+  "Both legs have to match, capacitors included. A mismatch there is not a gain error you can trim out: it is a common-mode rejection that falls away as the frequency climbs.",
+  "The CMRR below is the ceiling the resistors alone set, at DC. The amplifier's own CMRR, the capacitor tolerance and stray capacitance all sit under it \u2013 read it as the best the resistors will allow, not as what the board will do."
+ ],
  fields:[F("R1","R1 input, each leg","Ω","20k"),F("R2","R2 feedback, each leg","Ω","1M"),
          F("Cf","Cf across each R2","F","10n"),
          F("f","Test frequency (optional)","Hz",""),
@@ -659,7 +695,7 @@ const CALCS = [
  }},
 
 {id:"opinv", group:"Op-amps", name:"Inverting amplifier",
- note:"Rin from the source to the inverting input, Rf from the output back to it.",
+ note:["Rin from the source to the inverting input, Rf from the output back to it."],
  fields:[F("Rin","Rin","\u03a9","1k"),F("Rf","Rf","\u03a9","10k"),F("Vin","Input (optional)","V","0.1")],
  run(v){
    const {Rin,Rf,Vin} = v;
@@ -673,7 +709,7 @@ const CALCS = [
  }},
 
 {id:"opnon", group:"Op-amps", name:"Non-inverting amplifier",
- note:"Rg from the inverting input to ground, Rf from the output back to it. Rf = 0 gives a buffer.",
+ note:["Rg from the inverting input to ground, Rf from the output back to it. Rf = 0 gives a buffer."],
  fields:[F("Rg","Rg to ground","\u03a9","1k"),F("Rf","Rf feedback","\u03a9","10k"),F("Vin","Input (optional)","V","0.1")],
  run(v){
    const {Rg,Rf,Vin} = v;
@@ -686,7 +722,7 @@ const CALCS = [
  }},
 
 {id:"opdiff", group:"Op-amps", name:"Difference amplifier",
- note:"R1 on each input, R2 as feedback and to ground. Matching sets the common-mode rejection.",
+ note:["R1 on each input, R2 as feedback and to ground. Matching sets the common-mode rejection."],
  fields:[F("R1","R1 input","\u03a9","10k"),F("R2","R2 feedback","\u03a9","100k"),
          F("V1","V1 inverting side","V","2"),F("V2","V2 non-inverting side","V","2.1")],
  run(v){
@@ -701,7 +737,10 @@ const CALCS = [
  }},
 
 {id:"reg", group:"Power", name:"Adjustable regulator output",
- note:"Rtop from the output to the feedback pin, Rbot from feedback to ground. Vref is on the datasheet: 1.25 V for LM317, 0.8 V for many switchers.",
+ note:[
+  "Rtop from the output to the feedback pin, Rbot from feedback to ground.",
+  "Vref comes off the datasheet: 1.25 V for an LM317, 0.8 V for many switchers."
+ ],
  fields:[F("Vref","Feedback reference","V","1.25"),F("Rtop","Rtop","\u03a9","240"),
          F("Rbot","Rbot","\u03a9","1k5"),F("Iadj","Feedback pin current (optional)","A","50u")],
  run(v){
@@ -716,7 +755,7 @@ const CALCS = [
  }},
 
 {id:"ldo", group:"Power", name:"Linear regulator dissipation",
- note:"The heat a linear part has to lose, and where that puts the die.",
+ note:["The heat a linear part has to lose, and where that puts the die."],
  fields:[F("Vin","Input","V","12"),F("Vout","Output","V","3.3"),F("Iout","Load current","A","0.5"),
          F("Rja","Package \u03b8JA","\u00b0C/W","50"),F("Ta","Ambient","\u00b0C","25")],
  run(v){
@@ -781,7 +820,7 @@ const CALCS = [
   }},
 
 {id:"shunt", group:"Measurement", name:"Current sense shunt",
- note:"Sizing a shunt and the amplifier in front of an ADC.",
+ note:["Sizing a shunt and the amplifier in front of an ADC."],
  fields:[F("I","Current to measure","A","10"),F("Rs","Shunt","\u03a9","5m"),F("G","Amplifier gain","\u00d7","20"),
          F("Vref","ADC reference","V","3.3"),F("bits","ADC bits","","12")],
  run(v){
@@ -804,7 +843,10 @@ const CALCS = [
  }},
 
 {id:"trace", group:"Measurement", name:"PCB trace current & width",
- note:"Trace sizing uses KiCad's closed-form fits to IPC-2152 data. Copper planes, airflow, nearby heat sources and the finished stack-up still need to be checked with the PCB fabricator.",
+ note:[
+  "Trace sizing uses KiCad's closed-form fits to the IPC-2152 data.",
+  "Copper planes, airflow, whatever sits next to it and the finished stack-up all change the answer, and belong in a conversation with the fabricator."
+ ],
  fields:[F("I","Peak / RMS current","A","3"),FS("layer","Copper layer",["External","Internal"],"External"),
          F("oz","Finished copper weight","oz","1"),F("dT","Allowed temperature rise","\u00b0C","20"),
          F("Tamb","Ambient temperature","\u00b0C","25","25"),F("len","Trace length","mm","50","50"),
@@ -1544,7 +1586,7 @@ function parseList(t){
 const NEW_CALCS = [
 
 {id:"rcolor", group:"Components", name:"Resistor colour code",
- note:"Read the bands off the part, or type a value to see which bands it should have.",
+ note:["Read the bands off the part, or type a value to see which bands it should have."],
  fields:[FS("n","Bands",["4","5","6"],"4"),
          FS("b1","Band 1",DIGITS,"brown"), FS("b2","Band 2",DIGITS,"black"),
          FS("b3","Band 3 (5 and 6 band)",DIGITS,"black"),
@@ -1577,7 +1619,7 @@ const NEW_CALCS = [
  }},
 
 {id:"smd", group:"Components", name:"SMD resistor code",
- note:"Type the marking on the part, or a value to get every marking it could carry.",
+ note:["Type the marking on the part, or a value to get every marking it could carry."],
  fields:[FT("code","Marking","103  1002  4R7  01A"), FT("val","Or a value","10k")],
  run(v){
    if(v.code){
@@ -1598,7 +1640,7 @@ const NEW_CALCS = [
  }},
 
 {id:"netcombo", group:"Components", name:"Series & parallel",
- note:"List the parts you have, separated by commas. Resistors and inductors add in series; capacitors add in parallel.",
+ note:["List the parts you have, separated by commas. Resistors and inductors add in series; capacitors add in parallel."],
  fields:[FS("type","Component",["Resistors","Capacitors","Inductors"],"Resistors"),
          FT("list","Values","10k, 22k, 4k7")],
  run(v){
@@ -1618,7 +1660,7 @@ const NEW_CALCS = [
  }},
 
 {id:"react", group:"Components", name:"Reactance Xc and XL",
- note:"What a capacitor or an inductor looks like at one frequency.",
+ note:["What a capacitor or an inductor looks like at one frequency."],
  fields:[F("f","Frequency","Hz","1k"),F("C","Capacitance","F","100n"),F("L","Inductance","H","10u"),
          F("Rs","Series resistance (optional)","Ω","0.5")],
  run(v){
@@ -1642,7 +1684,7 @@ const NEW_CALCS = [
  }},
 
 {id:"zener", group:"Power", name:"Zener shunt regulator",
- note:"Rs feeds both the zener and the load. The zener has to swallow whatever the load does not take.",
+ note:["Rs feeds both the zener and the load. The zener has to swallow whatever the load does not take."],
  fields:[F("Vin","Input","V","12"),F("Vz","Zener voltage","V","5.1"),F("Rs","Series resistor","Ω","220"),
          F("Il","Load current","A","10m"),F("Pz","Zener power rating","W","0.5")],
  run(v){
@@ -1675,7 +1717,7 @@ const NEW_CALCS = [
  }},
 
 {id:"opspeed", group:"Op-amps", name:"Op-amp bandwidth & slew rate",
- note:"Checks the two speed limits separately: small-signal bandwidth comes from GBW divided by closed-loop noise gain, while large-signal sine waves need adequate slew rate.",
+ note:["Checks the two speed limits separately: small-signal bandwidth comes from GBW divided by closed-loop noise gain, while large-signal sine waves need adequate slew rate."],
  fields:[F("gain","Closed-loop noise gain","×","10"),F("f","Highest sine frequency","Hz","100k"),
          F("Vpp","Maximum output swing","V","5"),F("tr","Required 10–90 % step rise time (optional)","s","1u"),
          F("margin","GBW margin","×","5"),F("gbw","Candidate GBW (optional)","Hz","10M"),
@@ -1877,7 +1919,10 @@ function awgFor(areaMM2){
 const WIRE_CALCS = [
 
 {id:"wire", group:"Wire", name:"Wire resistance from diameter",
- note:"R = \u03c1L/A with A = \u03c0D\u00b2/4. Using the diameter directly instead of the area is a common error \u2014 it drops the square and understates the resistance badly on thin wire.",
+ note:[
+  "R = \u03c1L/A, with A = \u03c0D\u00b2/4.",
+  "Using the diameter where the area belongs is the common error: it drops the square, and understates the resistance badly on thin wire."
+ ],
  fields:[F("L","Length","m","100"),F("D","Conductor diameter","mm","0.2"),
          FS("mat","Material",Object.keys(RHO),"Copper, pure"),
          F("Rm","Measured resistance (optional)","Ω","")],
@@ -1908,7 +1953,11 @@ const WIRE_CALCS = [
  }},
 
 {id:"cable", group:"Wire", name:"Cable size & voltage drop",
- note:"Sizing a run for a current and an acceptable drop. The length is one way; the calculation uses the round trip. Conductor temperature is asked for rather than assumed — copper gains about 0.39 % per degree, so a loaded cable drops more than a cold one. How hot it actually gets depends on the insulation, on whether the run is bundled or in free air, and on the ambient, so that is yours to say; the watts per metre below are what has to escape.",
+ note:[
+  "Sizing a run for a current and an acceptable drop. Give the length one way; the calculation uses the round trip.",
+  "Conductor temperature is asked for rather than assumed. Copper gains about 0.39 % per degree, so a loaded cable drops more than a cold one.",
+  "How hot it actually gets depends on the insulation, on whether the run is bundled or in free air, and on the ambient \u2013 which is why that is yours to say. The watts per metre below are what has to escape."
+ ],
  ref: awgTableHTML,
  fields:[F("I","Current","A","32"),F("L","One way length","m","15"),F("V","System voltage","V","230"),
          F("drop","Allowed drop","%","3"),F("A","Or a cross section you already have","mm²",""),
@@ -1965,60 +2014,144 @@ const WIRE_CALCS = [
 const POWER_CALCS = [
 
 {id:"fet", group:"Power", name:"MOSFET gate drive & losses",
- note:"Conduction and switching losses plus a first-pass gate-drive check. The Miller estimate uses QGD and the total gate resistance; verify it against the device switching curves and the actual driver.",
- fields:[F("Vds","Switched voltage","V","400"),F("Id","Drain current","A","2"),
+ presetKey:"part",
+ presets:{
+   "2N7002 · 60 V N-ch SOT-23":{Rds:"7.5",Qg:"1.6n",Qgd:"0.4n",Vplateau:"2.5",Rgi:"120",Vdsmax:"60",Idmax:"115m",Rja:"348",Vgsq:"10"},
+   "BSS138 · 50 V N-ch SOT-23":{Rds:"3.5",Qg:"1.7n",Qgd:"0.35n",Vplateau:"2.2",Rgi:"9",Vdsmax:"50",Idmax:"200m",Rja:"350",Vgsq:"10"},
+   "Si2302 · 20 V N-ch SOT-23":{Rds:"50m",Qg:"3n",Qgd:"0.8n",Vplateau:"2.2",Rgi:"6",Vdsmax:"20",Idmax:"3.3",Rja:"160",Vgsq:"4.5"},
+   "AO3400A · 30 V N-ch SOT-23":{Rds:"28m",Qg:"7n",Qgd:"1.6n",Vplateau:"2.4",Rgi:"3",Vdsmax:"30",Idmax:"5.7",Rja:"125",Vgsq:"10"},
+   "AO3401A · -30 V P-ch SOT-23":{Rds:"60m",Qg:"7n",Qgd:"2.5n",Vplateau:"2.6",Rgi:"7.8",Vdsmax:"30",Idmax:"4",Rja:"125",Vgsq:"10"},
+   "IRLZ44N · 55 V logic-level TO-220":{Rds:"22m",Qg:"48n",Qgd:"25n",Vplateau:"4.5",Rgi:"",Vdsmax:"55",Idmax:"47",Rja:"62",Vgsq:"10"},
+   "IRFZ44N · 55 V N-ch TO-220":{Rds:"17.5m",Qg:"63n",Qgd:"23n",Vplateau:"5.5",Rgi:"",Vdsmax:"55",Idmax:"49",Rja:"62",Vgsq:"10"},
+   "IRF540N · 100 V N-ch TO-220":{Rds:"44m",Qg:"71n",Qgd:"21n",Vplateau:"5.5",Rgi:"",Vdsmax:"100",Idmax:"33",Rja:"62",Vgsq:"10"},
+   "IRF9540N · -100 V P-ch TO-220":{Rds:"117m",Qg:"68n",Qgd:"27n",Vplateau:"5.5",Rgi:"",Vdsmax:"100",Idmax:"23",Rja:"62",Vgsq:"10"},
+   "IRF740 · 400 V N-ch TO-220":{Rds:"550m",Qg:"63n",Qgd:"31n",Vplateau:"6",Rgi:"",Vdsmax:"400",Idmax:"10",Rja:"62",Vgsq:"10"},
+   "IRFP260N · 200 V N-ch TO-247":{Rds:"40m",Qg:"156n",Qgd:"73.3n",Vplateau:"6",Rgi:"",Vdsmax:"200",Idmax:"50",Rja:"40",Vgsq:"10"},
+   "NCEP020N10LL · 100 V N-ch TOLL":{Rds:"1.5m",Qg:"252n",Qgd:"63n",Vplateau:"3.8",Rgi:"2.8",Vdsmax:"100",Idmax:"330",Rja:"40",Vgsq:"10"},
+   "SED3022M · 30 V dual N-ch DFN3x3":{Rds:"16m",Qg:"17.5n",Qgd:"4.1n",Vplateau:"2.5",Rgi:"",Vdsmax:"30",Idmax:"20",Rja:"60",Vgsq:"10"}
+ },
+ note:[
+  "Conduction and switching losses, with a first-pass check on the gate drive. The Miller estimate comes from QGD and the total gate resistance, so read it against the switching waveforms in the datasheet rather than instead of them.",
+  "Picking a device fills the tinted boxes and nothing else: Rds(on), Qg, QGD, the plateau, the internal gate resistance, the ratings and the package's thermal figure. The plain boxes are the board \u2013 the rail, the current, the duty, the frequency, the drive and the thermal path you actually built.",
+  "Every one of those figures is quoted at a single gate voltage, which is carried in its own field. Drive the part anywhere else and Rds(on), Qg and QGD all move; the page says so rather than scaling them by a factor it has no way to know. Take the numbers off the curve at your own VGS and type them in.",
+  "Rds(on) climbs with temperature, and by how much is a property of the die. The multiplier is a field, not a constant: read it off the Rds(on)-versus-temperature curve at the junction temperature you expect.",
+  "The \u03b8JA a device brings with it is that package on the datasheet's own test board, in still air, with nothing bolted to it. Fit a heatsink and the figure to enter is \u03b8JC + \u03b8CS + \u03b8SA instead \u2013 never \u03b8JA.",
+  "A P-channel part is the same arithmetic with every sign reversed. Enter magnitudes, and read the drawing as the shape rather than the polarity.",
+  "Where a datasheet publishes nothing \u2013 an internal gate resistance, most often \u2013 the field is left empty rather than filled with a plausible number, and what that costs the estimate is said beside it. Everything here is a starting point: check it against the datasheet you are building to."
+ ],
+ fields:[FS("part","Device – fills the device figures only",["— enter values by hand —","2N7002 · 60 V N-ch SOT-23","BSS138 · 50 V N-ch SOT-23","Si2302 · 20 V N-ch SOT-23","AO3400A · 30 V N-ch SOT-23","AO3401A · -30 V P-ch SOT-23","IRLZ44N · 55 V logic-level TO-220","IRFZ44N · 55 V N-ch TO-220","IRF540N · 100 V N-ch TO-220","IRF9540N · -100 V P-ch TO-220","IRF740 · 400 V N-ch TO-220","IRFP260N · 200 V N-ch TO-247","NCEP020N10LL · 100 V N-ch TOLL","SED3022M · 30 V dual N-ch DFN3x3"],"— enter values by hand —"),
+         F("Vds","Switched voltage","V","400"),F("Id","Drain current","A","2"),
          F("D","Duty cycle","%","40"),F("f","Switching frequency","Hz","65k"),
          F("Rds","Rds(on)","Ω","0.3"),F("tsw","Rise + fall time","s","60n"),
          F("Qg","Gate charge","C","20n"),F("Vg","Gate drive","V","12"),
-         F("Rja","θJA or θJC + heatsink","°C/W","62"),F("Ta","Ambient","°C","40"),
+         F("Rja","θJA still air, or θJC + heatsink","°C/W","62"),F("Ta","Ambient","°C","40"),
          F("Qgd","Miller gate charge QGD","C","8n","8n",true),F("Vplateau","Miller plateau voltage","V","5","5"),
          F("Rg","External gate resistor","Ω","10","10"),F("Rdrv","Driver source/sink resistance","Ω","2","2"),
-         F("Rgi","MOSFET internal gate resistance","Ω","1","1")],
+         F("Rgi","MOSFET internal gate resistance – often unpublished","Ω","",""),
+         F("Vdsmax","Device VDS max (optional)","V",""),F("Idmax","Device ID max (optional)","A",""),
+         F("Vgsq","Datasheet figures quoted at VGS","V",""),
+         F("khot","Rds(on) hot ÷ cold, from the datasheet curve","×","1.4")],
  run(v){
-   const {Vds,Id,D,f,Rds,tsw,Qg,Vg,Rja,Ta,Qgd,Vplateau,Rg,Rdrv,Rgi} = v;
+    const {Vds,Id,D,f,Rds,tsw,Qg,Vg,Rja,Ta,Qgd,Vplateau,Rg,Rdrv,Rgi,Vdsmax,Idmax,Vgsq,khot} = v;
+    /* A P-channel part is this arithmetic with every sign reversed, so the
+       page works in magnitudes throughout and the drawing stays the one
+       N-channel symbol. Enter the numbers as sizes, not as signs.      */
+    const aVds = Math.abs(Vds), aId = Math.abs(Id), aVg = Math.abs(Vg);
    if(!isFinite(Id)||!isFinite(Rds)) return null;
    const d = isFinite(D) ? D/100 : 1;
-   const pc = Id*Id*Rds*d;
+    const kh = (isFinite(khot) && khot > 0) ? khot : 1.4;
+    const pc = aId*aId*Rds*d;
    const out = [R("Conduction loss",pc,"W","Id\u00b2 \u00d7 Rds(on) \u00d7 duty"),
-                R("At 100 \u00b0C junction",pc*1.4,"W","Rds(on) roughly 1.4\u00d7 warmer")];
+                 R("Conduction loss when hot",pc*kh,"W","Rds(on) \u00d7 "+kh+" \u2013 read that multiplier off the Rds(on)-versus-temperature curve for your part and your junction temperature; silicon runs from about 1.3 to 2 and no single figure fits every device")];
+    /* A switch that never switches. Everything paid per cycle goes to zero,
+       and printing a column of zeros hides the one loss that is left. The
+       gate figures still describe the single transition, so they stay.   */
+    const dc = !isFinite(f) || f<=0;
+    if(dc) out.push(R("Held on",null,"","no switching: the only loss is conduction, and Rds(on) rises with temperature, which raises it again"));
+    /* The rail and the load current are yours; the ratings belong to the
+       part. Picking a device therefore leaves the circuit alone and says
+       plainly when the circuit is outside what the part can take - which
+       a page full of neat wattages would otherwise hide.               */
+    if(isFinite(Vdsmax)&&Vdsmax>0&&isFinite(aVds)){
+      if(aVds>Vdsmax) out.push(R("Over the drain rating",null,"","the switched voltage is "+siFmt(aVds,"V")+" and the device is rated "+siFmt(Vdsmax,"V")+" – it will avalanche"));
+      else out.push(R("Drain-source margin",aVds/Vdsmax*100,"%","of the "+siFmt(Vdsmax,"V")+" rating; leave room for the spike the layout adds at turn-off"));
+    }
+    if(isFinite(Idmax)&&Idmax>0&&isFinite(aId)){
+      if(aId>Idmax) out.push(R("Over the current rating",null,"","the drain current is "+siFmt(aId,"A")+" and the device is rated "+siFmt(Idmax,"A")));
+      else out.push(R("Drain current margin",aId/Idmax*100,"%","of the "+siFmt(Idmax,"A")+" rating, itself quoted at a case temperature you will not have"));
+    }
+    /* Rds(on), Qg and QGD are all quoted at one gate voltage. Driving the
+       part somewhere else changes every one of them, and not by a factor
+       this page can know: below the quoted voltage Rds(on) rises steeply
+       and the losses here are optimistic. Naming the mismatch is honest;
+       inventing a correction would not be.                            */
+    if(isFinite(Vgsq) && Vgsq>0 && isFinite(aVg) && Math.abs(aVg-Vgsq) > 0.05*Vgsq){
+      out.push(R("Gate drive is not the datasheet's",null,"",
+        "the figures above are quoted at VGS = "+siFmt(Vgsq,"V")+" and the drive is "+siFmt(aVg,"V")+
+        (aVg<Vgsq ? " \u2013 Rds(on) will be higher than the figure used here, Qg and QGD lower, so the conduction loss is understated"
+                  : " \u2013 Qg and QGD will be higher than the figures used here, so the gate-drive loss is understated")+
+        ". Take the numbers off the curve at your own gate voltage and type them in."));
+    }
    let ps = 0, pg = 0;
-   if(isFinite(Vds)&&isFinite(f)&&isFinite(tsw)){
-     ps = 0.5*Vds*Id*tsw*f;
+   if(!dc && isFinite(Vds)&&isFinite(f)&&isFinite(tsw)){
+     ps = 0.5*aVds*aId*tsw*f;
      out.push(R("Switching loss",ps,"W","\u00bd \u00d7 Vds \u00d7 Id \u00d7 (tr+tf) \u00d7 f"));
    }
-   if(isFinite(Qg)&&isFinite(Vg)&&isFinite(f)){
-     pg = Qg*Vg*f;
+   if(!dc && isFinite(Qg)&&isFinite(Vg)&&isFinite(f)){
+     pg = Qg*aVg*f;
      out.push(R("Gate-driver average current",Qg*f,"A","Qg × switching frequency"),
               R("Gate drive loss",pg,"W","paid by the driver, not the FET"));
    }
-   if(isFinite(Qgd)&&isFinite(Vplateau)&&isFinite(Vg)&&isFinite(Rg)&&isFinite(Rdrv)&&isFinite(Rgi) &&
-      Qgd>0&&Rg>=0&&Rdrv>=0&&Rgi>=0&&Vg>Vplateau){
-     const rGate=Rg+Rdrv+Rgi, iPeak=Vg/rGate, iMiller=(Vg-Vplateau)/rGate;
+   if(isFinite(Qgd)&&isFinite(Vplateau)&&isFinite(Vg)&&isFinite(Rg)&&isFinite(Rdrv) &&
+      Qgd>0&&Rg>=0&&Rdrv>=0&&aVg>Vplateau){
+      const rgi = isFinite(Rgi) ? Rgi : 0;
+      const rGate=Rg+Rdrv+rgi, iPeak=aVg/rGate, iMiller=(aVg-Vplateau)/rGate;
      const tMiller=Qgd/iMiller, tEstimated=2*tMiller;
-     out.push(R("Total gate resistance",rGate,"Ω","external resistor + driver + MOSFET internal resistance"),
+      out.push(R("Total gate resistance",rGate,"Ω", isFinite(Rgi)
+                 ? "external resistor + driver + the MOSFET's own"
+                 : "external resistor + driver only – no internal gate resistance entered, and many datasheets never publish one, so the transition times below are optimistic"),
               R("Peak gate current",iPeak,"A","at the beginning of the gate-charge pulse"),
               R("Miller plateau current",iMiller,"A","sets the drain-voltage transition speed"),
               R("Estimated Miller time",tMiller,"s","QGD ÷ Miller plateau current"),
               R("Estimated rise + fall time",tEstimated,"s","two Miller transitions"));
-     if(isFinite(Vds)&&isFinite(Id)&&isFinite(f))
-       out.push(R("Miller-estimated switching loss",Vds*Id*tMiller*f,"W",
+     if(!dc && isFinite(Vds)&&isFinite(Id)&&isFinite(f))
+       out.push(R("Miller-estimated switching loss",aVds*aId*tMiller*f,"W",
          "VDS × ID × Miller time × switching frequency"));
-   }else if(isFinite(Vg)&&isFinite(Vplateau)&&Vg<=Vplateau){
+   }else if(isFinite(Vg)&&isFinite(Vplateau)&&aVg<=Vplateau){
      out.push(R("Gate-drive warning",null,"","gate drive must be higher than the Miller plateau voltage"));
    }
-   const tot = pc*1.4 + ps;
+   const tot = pc*kh + ps;
    out.push(R("Total in the FET",tot,"W","hot conduction plus switching"));
    if(isFinite(Rja)&&isFinite(Ta)){
      const tj = Ta + tot*Rja;
-     out.push(R("Junction temperature",tj,"\u00b0C",
-       tj>150?"over a typical 150 \u00b0C limit":tj>125?"close to the limit":"within a typical limit"));
-     out.push(R("\u03b8 needed for 125 \u00b0C",(125-Ta)/tot,"\u00b0C/W","total junction to ambient"));
+      /* The caveat belongs beside the number rather than in a paragraph at
+         the top of the page. A datasheet θJA is that package on that
+         maker's own test board in still air; bolt a heatsink on and the
+         path is a different one entirely.                               */
+      out.push(R("Junction temperature",tj,"°C",
+        (tj>150?"over a typical 150 °C limit":tj>125?"close to the limit":"within a typical limit")+
+        " – on the "+siFmt(Rja,"°C/W")+" entered above. For a device brought in from the list that is the package on the datasheet's own test board, in still air, with nothing bolted to it. Put a heatsink on and the figure to enter is θJC + θCS + θSA, never θJA."));
+      /* (125 - Ta) / P is arithmetic, not advice. At a few milliwatts it
+         asks for thousands of degrees per watt, which no package has and
+         none needs: what it means is that the thermal path has stopped
+         mattering, and saying so is more use than the number.          */
+      const need = (125-Ta)/tot;
+      if(!(tot>0) || !isFinite(need)){
+        out.push(R("Thermal path",null,"","no dissipation to get rid of"));
+      }else if(Ta>=125){
+        out.push(R("Thermal path",null,"","the ambient is already at or above 125 °C, so no thermal path reaches it"));
+      }else if(need>500){
+        out.push(R("Thermal path",null,"","the losses are low enough that the bare package in still air stays far inside 125 °C – nothing to solve here"));
+      }else{
+        out.push(R("θ needed for 125 °C",need,"°C/W","total junction to ambient"+
+          (isFinite(Rja) ? (Rja<=need ? "; the "+siFmt(Rja,"°C/W")+" entered above is inside it" : "; the "+siFmt(Rja,"°C/W")+" entered above is not enough") : "")));
+      }
    }
    return out;
  }},
 
 {id:"heatsink", group:"Power", name:"Heatsink selection",
- note:"The thermal path is a series of resistances: junction to case, case to sink, sink to air. Only the last one is yours to choose.",
+ note:["The thermal path is a series of resistances: junction to case, case to sink, sink to air. Only the last one is yours to choose."],
  fields:[F("Pd","Dissipation","W","4.35"),F("Tj","Junction limit","°C","125"),
          F("Ta","Ambient","°C","40"),F("Rjc","θJC","°C/W","3"),
          F("Rcs","θCS pad or grease","°C/W","0.5"),F("Rsa","θSA of a sink you have","°C/W","")],
@@ -2176,7 +2309,11 @@ DIAGRAMS.opspeed = (r,o) => SVG(
 const AMP_CALCS = [
 
 {id:"hyst", group:"Op-amps", name:"Comparator with hysteresis",
- note:"A Schmitt trigger. R2 feeds a little of the output back to the non-inverting input, so the trip point moves away from the input as soon as it flips \u2014 that is what stops a slow or noisy signal from chattering. R1 carries the signal in the non-inverting form, and the reference in the inverting form. Leave R1 empty and state the window you want to size it.",
+ note:[
+  "A Schmitt trigger. R2 feeds a little of the output back to the non-inverting input, so the trip point moves away from the input the moment it flips \u2014 which is what stops a slow or noisy signal from chattering.",
+  "R1 carries the signal in the non-inverting form, and the reference in the inverting one.",
+  "Leave R1 empty and state the window you want instead, and it will be sized for you."
+ ],
  fields:[FS("topo","Topology",["Non-inverting","Inverting"],"Non-inverting"),
          F("Vref","Reference at the other input","V","2.5"),
          F("VoH","Output high","V","5"),F("VoL","Output low","V","0"),
@@ -2238,7 +2375,10 @@ const AMP_CALCS = [
 const EXTRA_CALCS = [
 
 {id:"divider", group:"Basics", name:"Voltage divider",
- note:"A divider is a voltage source with resistance. Connect a load and the lower leg becomes R2 ∥ RL, so the output is lower than the unloaded calculation.",
+ note:[
+  "A divider is a voltage source with resistance.",
+  "Connect a load and the lower leg becomes R2 \u2225 RL, so the output sits below what the unloaded sum says."
+ ],
  fields:[F("Vin","Input voltage","V","12"),F("R1","Upper resistor R1","Ω","10k"),
          F("R2","Lower resistor R2","Ω","4.7k"),FC("useLoad","Connect load RL",true),
          {...F("RL","Load resistance","Ω","10k"),showWhen:"useLoad"}],
@@ -2266,7 +2406,10 @@ const EXTRA_CALCS = [
  }},
 
 {id:"adc", group:"Measurement", name:"ADC input front-end",
- note:"Sizes a safe divider for a signal above the ADC reference, then checks filtering, settling and a first-pass ADC error budget. The uncertainty budget combines stated static errors with 3σ random noise.",
+ note:[
+  "Sizes a safe divider for a signal above the ADC reference, then checks the filtering, the settling and a first-pass error budget.",
+  "That budget combines the stated static errors with 3\u03c3 random noise, so it is a shape to design to rather than a number to quote."
+ ],
  fields:[F("Vsig","Maximum signal","V","12"),F("Vref","ADC reference / full scale","V","3.3"),
          F("bits","ADC resolution","bit","12"),F("Rbot","Chosen lower divider resistor","Ω","10k"),
          F("Rsrc","Source + series resistance","Ω","1k"),F("C","ADC filter capacitor","F","10n"),
@@ -2317,7 +2460,11 @@ const EXTRA_CALCS = [
  }},
 
 {id:"tempsense", group:"Measurement", name:"NTC, PT100 & RTD",
- note:"An NTC is shown as a practical voltage divider: choose whether it is Rtop or Rbot, then enter the supply and fixed resistor to get Vout. PT100/PT1000 use current excitation and the IEC 60751 platinum RTD model. For an RTD resistance-to-temperature conversion, enter the measured total (sensor plus two lead wires) and the total lead resistance separately.",
+ note:[
+  "An NTC is shown as the voltage divider it usually is: choose whether it sits on top or at the bottom, then give the supply and the fixed resistor to get Vout.",
+  "PT100 and PT1000 use current excitation and the IEC 60751 platinum model instead.",
+  "Going the other way, from resistance to temperature, enter the measured total \u2014 sensor plus both lead wires \u2014 and the lead resistance separately."
+ ],
  fields:[FS("sensor","Sensor type",["NTC (Beta)","PT100 (IEC 60751)","PT1000 (IEC 60751)","Custom IEC RTD"],"NTC (Beta)"),
          FS("mode","Calculation",["Temperature → resistance","Resistance → temperature"],"Temperature → resistance"),
          {...F("T","Input temperature","°C","25"),showWhen:{k:"mode",is:"Temperature → resistance"}},
@@ -2375,7 +2522,10 @@ const EXTRA_CALCS = [
  }} ,
 
 {id:"snubber", group:"Power", name:"RC snubber & RCD clamp",
- note:"First-pass damping and clamp sizing. RC snubber loss is estimated as C × V² × switching frequency. RCD values use leakage-inductance energy; verify parasitics and waveform voltage on the actual converter.",
+ note:[
+  "First-pass damping and clamp sizing. RC snubber loss is taken as C \u00d7 V\u00b2 \u00d7 switching frequency.",
+  "RCD values come from the leakage-inductance energy, which is a parasitic you have to measure on the converter rather than read anywhere."
+ ],
  fields:[FS("kind","Network",["RC snubber","RCD clamp"],"RC snubber"),
          {...F("Vsw","Switching voltage","V","100"),showWhen:{k:"kind",is:"RC snubber"}},
          {...F("fs","Switching frequency","Hz","100k"),showWhen:{k:"kind",is:"RC snubber"}},
@@ -2413,7 +2563,10 @@ const EXTRA_CALCS = [
  }},
 
 {id:"i2c", group:"Measurement", name:"I²C pull-up & bus capacitance",
- note:"Checks the I²C pull-up window from bus capacitance, rise time and guaranteed low-level sink current. The rise-time model is the standard 30–70 % RC approximation; use actual measured bus capacitance for a final design.",
+ note:[
+  "Checks the I\u00b2C pull-up window from bus capacitance, rise time and the guaranteed low-level sink current.",
+  "The rise time is the standard 30\u201370 % RC approximation, and the capacitance is the number worth measuring rather than estimating before a design is finished."
+ ],
  fields:[F("Vdd","Bus supply","V","3.3"),FS("speed","I²C speed class",["Standard mode (100 kHz)","Fast mode (400 kHz)","Fast-mode Plus (1 MHz)"],"Fast mode (400 kHz)"),
          F("Cbus","Bus capacitance per line","F","200p"),F("Rpull","One fitted pull-up resistor","Ω","4.7k"),F("Npull","Parallel pull-ups per line","×","1"),
          F("Vol","Maximum valid logic-low voltage","V","0.4"),F("Iol","Guaranteed low-level sink current","A","3m")],
@@ -2436,7 +2589,10 @@ const EXTRA_CALCS = [
  }},
 
 {id:"lcinput", group:"Filters", name:"LC / π input filter",
- note:"Estimates an LC input filter's resonance, damping and attenuation at one noise frequency. A π filter adds an input capacitor; verify converter input-impedance stability and capacitor ripple-current ratings on the real design.",
+ note:[
+  "Estimates an LC input filter's resonance, damping and attenuation at one noise frequency. A \u03c0 filter adds an input capacitor.",
+  "Check the converter's input-impedance stability and the capacitors' ripple-current rating on the real design; neither is visible from here."
+ ],
  fields:[FS("kind","Topology",["LC filter","π input filter"],"LC filter"),F("Vnoise","Input noise amplitude","V","1"),F("fnoise","Noise frequency","Hz","100k"),
          F("L","Series inductor","H","10u"),{...F("Cin","Input capacitor for π filter","F","10u"),showWhen:{k:"kind",is:"π input filter"}},
          F("Cout","Output capacitor","F","10u"),F("Rseries","Total series damping resistance","Ω","100m")],
@@ -2454,7 +2610,10 @@ const EXTRA_CALCS = [
  }},
 
 {id:"inductor", group:"Power", name:"Inductor saturation & core check",
- note:"Checks peak current, RMS copper loss, temperature and a first-pass flux-density estimate. Saturation and core-loss curves are material- and temperature-dependent, so always retain the inductor/core datasheet margin.",
+ note:[
+  "Checks peak current, RMS copper loss, temperature and a first-pass flux density.",
+  "Saturation and core loss both depend on the material and the temperature, so keep the margin the inductor's own datasheet asks for."
+ ],
  fields:[F("L","Inductance","H","10u"),F("Iavg","Average inductor current","A","5"),F("dI","Peak-to-peak ripple current","A","2"),F("Isat","Datasheet saturation current","A","8"),
          F("DCR","Winding DCR","Ω","20m"),F("Rth","Inductor thermal resistance","°C/W","25"),F("Tamb","Ambient temperature","°C","25"),F("Tmax","Maximum winding temperature","°C","125"),
          F("Nturns","Core turns","×","20"),F("Ae","Core effective area","mm²","25"),F("Bsat","Core saturation flux density","T","0.3")],
@@ -2473,7 +2632,10 @@ const EXTRA_CALCS = [
  }},
 
 {id:"tvs", group:"Components", name:"TVS / surge protection",
- note:"Sizes a shunt TVS from the surge source impedance and pulse shape. It estimates what reaches the protected node; check the TVS datasheet's specified waveform, repetition rate, temperature derating and coordinated fuse or series protection.",
+ note:[
+  "Sizes a shunt TVS from the surge source impedance and the pulse shape, and estimates what still reaches the node behind it.",
+  "Check the TVS datasheet's own waveform, repetition rate and temperature derating, and whether a fuse or series element is meant to work with it."
+ ],
  fields:[F("Vline","Maximum normal line voltage","V","24"),F("Vsurge","Surge source voltage","V","100"),F("Vwm","TVS standoff voltage VWM","V","26"),F("Vclamp","TVS clamp voltage at IPP","V","43"),
          F("Rsource","Surge source / series impedance","Ω","2"),F("Ipp","TVS rated peak pulse current","A","10"),F("tp","Surge pulse duration","s","100u"),F("shape","Pulse energy shape factor","×","0.5")],
  run(v){
@@ -2492,7 +2654,10 @@ const EXTRA_CALCS = [
  }},
 
 {id:"bjt", group:"Power", name:"BJT base resistor",
- note:"NPN low-side switch sizing. Use a forced gain well below the datasheet hFE so the transistor reaches saturation instead of trusting a typical gain figure.",
+ note:[
+  "An NPN low-side switch.",
+  "Use a forced gain well under the datasheet hFE, so the transistor is driven into saturation rather than trusted to reach it."
+ ],
  fields:[F("Vdrive","GPIO / drive voltage","V","3.3"),F("Vload","Load supply","V","12"),
          F("Ic","Collector current","A","100m"),F("Vbe","VBE in saturation","V","0.8"),
          F("Vcesat","VCE(sat)","V","0.2"),F("beta","Forced current gain","×","10"),
@@ -2512,7 +2677,10 @@ const EXTRA_CALCS = [
  }},
 
 {id:"rectifier", group:"Power", name:"Bridge rectifier & smoothing capacitor",
- note:"A full-wave bridge recharges the reservoir capacitor twice per mains cycle. It also estimates transformer VA, regulation, bridge heat and inrush from the values entered; use the transformer and bridge datasheets for the final selection.",
+ note:[
+  "A full-wave bridge recharges the reservoir capacitor twice per mains cycle.",
+  "It also estimates transformer VA, regulation, bridge heat and inrush from what you enter \u2014 the transformer and bridge datasheets are what the final choice rests on."
+ ],
  fields:[F("Vac","Transformer secondary (RMS)","V","12"),F("fline","Mains frequency","Hz","50"),
          F("I","Load current","A","500m"),F("Vripple","Allowed peak-to-peak ripple","V","1"),
          F("Vd","One diode forward drop","V","0.8"),F("C","Selected reservoir capacitor","F","2200u"),
@@ -2635,6 +2803,7 @@ function viewCalc(){
   const c = calcById(ui.calc);
   calcSeed(c);
   const raw = ui.calcVals[c.id] || {};
+  const devKeys = new Set(c.presets ? Object.keys(c.presets[Object.keys(c.presets)[0]]) : []);
   const shownFields = c.fields.filter(f=>{
     if(!f.showWhen) return true;
     /* A string retains the old checkbox behaviour.  Select-driven fields use
@@ -2646,20 +2815,29 @@ function viewCalc(){
     return Array.isArray(f.showWhen.is) ? f.showWhen.is.includes(current) : current===f.showWhen.is;
   });
   return `<div class="panel"><h2>${esc(c.name)}</h2>
-      ${c.note?`<p>${esc(c.note)}</p>`:""}
+      ${(()=>{ const pts = [].concat(c.note||[]).filter(Boolean);
+        if(!pts.length) return "";
+        /* one point is a sentence; a lone bullet is noise */
+        return pts.length===1 ? `<p>${esc(pts[0])}</p>`
+          : `<ul class="notelist">${pts.map(n=>`<li>${esc(n)}</li>`).join("")}</ul>`; })()}
       <div class="form" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
         ${shownFields.map(f=>f.t==="check"
           ? `<div class="f checkfield${f.newRow?" newrow":""}"><label class="checkrow"><input type="checkbox" class="calcin" data-ck="${esc(f.k)}"${(raw[f.k]!==undefined ? raw[f.k]===true || raw[f.k]==="true" : !!f.def)?" checked":""}><span>${esc(f.label)}</span></label></div>`
-          : `<div class="f${f.newRow?" newrow":""}">
+          : `<div class="f${f.newRow?" newrow":""}${devKeys.has(f.k)?" fromlist":""}">
           <label class="lab">${esc(f.label)}${f.unit?`<span class="field-unit">${esc(f.unit)}</span>`:""}</label>
           ${f.t==="sel"
-            ? `<select class="calcin" data-ck="${esc(f.k)}">${f.opts.map(o=>{
-                 const cur = (raw[f.k]!==undefined && raw[f.k]!=="") ? raw[f.k] : (f.def||f.opts[0]);
-                 return `<option${o===cur?" selected":""}>${esc(o)}</option>`;}).join("")}</select>`
+            ? (()=>{ const own = (c.presets && f.k===c.presetKey) ? Object.keys((ui.userParts||{})[c.id]||{}) : [];
+                const opts = f.opts.concat(own.length?["── yours ──"]:[], own);
+                const cur = (raw[f.k]!==undefined && raw[f.k]!=="") ? raw[f.k] : (f.def||f.opts[0]);
+                return `<select class="calcin" data-ck="${esc(f.k)}">${opts.map(o=>
+                  `<option${o===cur?" selected":""}${/^─/.test(o)?" disabled":""}>${esc(o)}</option>`).join("")}</select>`; })()
             : `<input class="calcin" data-ck="${esc(f.k)}" value="${esc(raw[f.k]!==undefined && raw[f.k]!=="" ? raw[f.k] : (f.def!==undefined ? f.def : ""))}" placeholder="${esc(f.ph||"")}"
                  inputmode="text" spellcheck="false" autocomplete="off">`}</div>`).join("")}
       </div>
+      ${c.presets?`<div class="listkey"><b></b>filled by the device you pick · the plain boxes are your circuit, and yours to fill</div>`:""}
       <div class="sheetbar"><button class="btn ghost" id="calcClear">Clear</button>
+        ${c.presets ? `<button class="btn ghost" id="calcSavePart">Save this device</button>` : ""}
+        ${(c.presets && ((ui.userParts||{})[c.id]||{})[raw[c.presetKey]]) ? `<button class="btn ghost" id="calcDropPart">Forget it</button>` : ""}
         <span style="color:var(--ink3);font-size:12px">${(()=>{ const u = calcUnitHints(c);
           return u.length ? `This page takes ${u.map(x=>`<span class="pn">${esc(x)}</span>`).join(" ")}
             — the unit is optional, and understood when it is there. ` : "";})()}Engineering
@@ -2779,7 +2957,7 @@ function renderRail(){
      units and the dropdown entries are searched too - and past that, the
      words below, which appear nowhere in a calculator's own wording. Those
      were measured rather than guessed: every one of them found nothing.   */
-  const hay = c => (c.name+" "+c.group+" "+c.id+" "+(c.note||"")+" "+(ALIAS[c.id]||"")+" "+
+  const hay = c => (c.name+" "+c.group+" "+c.id+" "+[].concat(c.note||[]).join(" ")+" "+(ALIAS[c.id]||"")+" "+
     (c.fields||[]).map(f=>f.label+" "+(f.unit||"")+" "+((f.opts||[]).join(" "))).join(" ")).toLowerCase();
   const hit = c => !q || hay(c).includes(q);
   const shown = CALCS.filter(hit);
@@ -2808,6 +2986,45 @@ document.addEventListener("click", ev=>{
   }
   const ck = t.closest("[data-calc]");
   if(ck){ ui.calc = ck.dataset.calc; ui.view = "calc"; render(); window.scrollTo(0,0); return; }
+  if(t.id==="calcSavePart"){
+    /* A reader's own parts sit beside the built-in list and outlast the
+       session. Only the device figures are kept: the circuit around them
+       belongs to the board, not to the transistor.                     */
+    const c = calcById(ui.calc);
+    if(!c.presets) return;
+    const sample = c.presets[Object.keys(c.presets)[0]];
+    const vals = ui.calcVals[c.id] || {};
+    const name = (prompt("Name for this device, as it should read in the list:","") || "").trim();
+    if(!name) return;
+    if(c.presets[name]) return toast("That name is already in the built-in list");
+    const rec = {};
+    Object.keys(sample).forEach(k=>{ rec[k] = String(vals[k]||""); });
+    ui.userParts[c.id] = ui.userParts[c.id] || {};
+    ui.userParts[c.id][name] = rec;
+    vals[c.presetKey] = name;
+    save(); render();
+    toast("Saved "+name+" \u2014 in this browser", "Undo", ()=>{
+      delete ui.userParts[c.id][name]; save(); render();
+    });
+    return;
+  }
+  if(t.id==="calcDropPart"){
+    const c = calcById(ui.calc);
+    const vals = ui.calcVals[c.id] || {};
+    const name = vals[c.presetKey];
+    const rec = ((ui.userParts||{})[c.id]||{})[name];
+    if(!rec) return;
+    if(!confirm("Forget "+name+"?")) return;
+    delete ui.userParts[c.id][name];
+    vals[c.presetKey] = c.fields.find(f=>f.k===c.presetKey).opts[0];
+    save(); render();
+    toast("Forgot "+name, "Undo", ()=>{
+      ui.userParts[c.id] = ui.userParts[c.id] || {};
+      ui.userParts[c.id][name] = rec;
+      vals[c.presetKey] = name; save(); render();
+    });
+    return;
+  }
   if(t.id==="calcClear"){
     delete ui.calcVals[ui.calc];
     render();
@@ -2848,6 +3065,16 @@ document.addEventListener("change", ev=>{
       const inverseRTD=key==="mode" && vals.mode==="Resistance → temperature" && type!=="NTC (Beta)";
       const invalidRTD=!isFinite(rtdTemperature(measured-lead,r0));
       if(key==="sensor" || (inverseRTD&&invalidRTD)) vals.Rmeas=reference;
+    }
+    /* A calculator may carry a table of parts. Choosing one writes the
+       figures that belong to the device and leaves everything that
+       belongs to the circuit alone - Id, the rail, the frequency and the
+       gate drive are yours, not the transistor's. Nothing is locked:
+       every field stays editable, because a datasheet figure is quoted at
+       conditions that may not be the ones on your bench.               */
+    if(c.presets && ev.target.dataset.ck===c.presetKey){
+      const p = c.presets[ev.target.value] || ((ui.userParts||{})[c.id]||{})[ev.target.value];
+      if(p) Object.keys(p).forEach(k=>{ if(k!=="_note") ui.calcVals[c.id][k]=p[k]; });
     }
     /* Selects can control which fields are relevant, just like checkboxes.
        Rebuild the form so dependent inputs and the live schematic agree. */
