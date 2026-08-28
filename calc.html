@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Circuit Calcs — bench calculators that draw themselves</title>
-<meta name="description" content="Thirty-seven bench calculators, each drawn as a schematic that redraws as you type. One HTML file, no server, no dependencies.">
+<meta name="description" content="Forty-one bench calculators, each drawn as a schematic that redraws as you type. One HTML file, no server, no dependencies.">
 <style>
 :root{
   /* palette: printed bin label on the bench — paper, Kapton amber, ESD blue */
@@ -162,6 +162,7 @@ th{font-family:var(--label);text-transform:uppercase;letter-spacing:.1em;font-si
 td{padding:7px 10px;border-bottom:1px solid var(--rule2);font-size:13px;vertical-align:top}
 tr:last-child td{border-bottom:0}
 td.m,th.m{font-family:var(--mono);font-size:12px}
+th.asis{text-transform:none;letter-spacing:.03em;font-size:12px}
 td.num,th.num{text-align:right}
 td.num{font-variant-numeric:tabular-nums}
 .linkish{color:var(--esd);text-decoration:underline;text-underline-offset:2px}
@@ -200,6 +201,9 @@ td.num{font-variant-numeric:tabular-nums}
 /* Two kinds of box on a page with a device list: the ones the list fills,
    and the ones only the board can answer. Tinting the first leaves the
    second plain, which is the pair you have to fill in yourself.        */
+.tblptr{padding:11px 16px;font-size:13px}
+.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tscroll>table{width:max-content;min-width:100%}
 .notelist{margin:0 0 12px;padding-left:17px;color:var(--ink2);font-size:13px;line-height:1.6}
 .notelist li{margin:3px 0}
 .notelist li::marker{color:var(--ink3)}
@@ -321,6 +325,7 @@ td.num{font-variant-numeric:tabular-nums}
   </div>
   <nav class="views" id="views">
     <button data-view="calc" class="on">Calculators</button>
+    <button data-view="tables">Tables</button>
     <button data-view="about">About</button>
     <a id="binLink" href="https://ajengineering.github.io/parts-bin-app/" target="_blank"
        rel="noreferrer" title="the component inventory these came out of">Parts Bin &#8599;</a>
@@ -342,7 +347,7 @@ td.num{font-variant-numeric:tabular-nums}
 
 <script>
 "use strict";
-const APP_VERSION = "1.2.0";
+const APP_VERSION = "1.3.0";
 const REPO_URL = "https://github.com/AJEngineering/circuit-calcs";
 const BIN_URL  = "https://github.com/AJEngineering/parts-bin-app";
 const $  = (s,r=document)=>r.querySelector(s);
@@ -353,7 +358,7 @@ const num = n => (Math.round(n*100)/100).toLocaleString("en-US");
 /* What the page remembers between visits: which calculator was open and what
    was typed into each. Nothing else - there is nothing else to keep.       */
 const KEY = "circuit-calcs-v1";
-const ui = {userParts:{}, calc:"ohm", calcVals:{}, q:"", view:"calc"};
+const ui = {userParts:{}, calc:"ohm", calcVals:{}, q:"", view:"calc", tableAt:"eseries"};
 /* Saving or forgetting a device is worth one line of confirmation and one
    chance to take it back. Eight seconds, then it clears itself.        */
 function toast(msg, undoLabel, undoFn){
@@ -433,7 +438,8 @@ const SI_OUT = [[1e12,"T"],[1e9,"G"],[1e6,"M"],[1e3,"k"],[1,""],[1e-3,"m"],
                 [1e-6,"\u00b5"],[1e-9,"n"],[1e-12,"p"]];
 /* Only physical base units take a prefix. A percentage, a temperature, a
    gain or a count must never come out as "500 m%" or "1.04 kmin".          */
-const SI_UNITS = {"V":1,"A":1,"\u03a9":1,"W":1,"F":1,"H":1,"Hz":1,"s":1,"Wh":1,"VA":1,"Ah":1};
+const SI_UNITS = {"V":1,"A":1,"\u03a9":1,"W":1,"F":1,"H":1,"Hz":1,"s":1,"Wh":1,"VA":1,"Ah":1,
+                  "V/√Hz":1,"A/√Hz":1,"A²s":1};
 function siFmt(n, unit){
   if(n===null || n===undefined || !isFinite(n)) return "\u2014";
   const u = unit||"";
@@ -551,26 +557,31 @@ const CALCS = [
  run(v){
    let {V,I,R:r,P} = v;
    const has = x=>isFinite(x) && x!==0 || x===0 && isFinite(x);
-   if(has(V)&&has(I)){ r=V/I; P=V*I; }
-   else if(has(V)&&has(r)){ I=V/r; P=V*V/r; }
-   else if(has(V)&&has(P)){ I=P/V; r=V*V/P; }
-   else if(has(I)&&has(r)){ V=I*r; P=I*I*r; }
-   else if(has(I)&&has(P)){ V=P/I; r=P/(I*I); }
-   else if(has(r)&&has(P)){ V=Math.sqrt(P*r); I=Math.sqrt(P/r); }
+   /* Only the two that were worked out carry a relation. The two you typed
+      were not derived from anything, so they say nothing.                */
+   let how = {};
+   if(has(V)&&has(I)){ r=V/I; P=V*I; how={R:"V \u00f7 I", P:"V \u00d7 I"}; }
+   else if(has(V)&&has(r)){ I=V/r; P=V*V/r; how={I:"V \u00f7 R", P:"V\u00b2 \u00f7 R"}; }
+   else if(has(V)&&has(P)){ I=P/V; r=V*V/P; how={I:"P \u00f7 V", R:"V\u00b2 \u00f7 P"}; }
+   else if(has(I)&&has(r)){ V=I*r; P=I*I*r; how={V:"I \u00d7 R", P:"I\u00b2 \u00d7 R"}; }
+   else if(has(I)&&has(P)){ V=P/I; r=P/(I*I); how={V:"P \u00f7 I", R:"P \u00f7 I\u00b2"}; }
+   else if(has(r)&&has(P)){ V=Math.sqrt(P*r); I=Math.sqrt(P/r); how={V:"\u221a(P \u00d7 R)", I:"\u221a(P \u00f7 R)"}; }
    else return null;
-   return [R("Voltage",V,"V"),R("Current",I,"A"),R("Resistance",r,"\u03a9"),R("Power",P,"W")];
+   return [R("Voltage",V,"V",how.V),R("Current",I,"A",how.I),
+           R("Resistance",r,"\u03a9",how.R),R("Power",P,"W",how.P)];
  }},
 
 {id:"led", group:"Basics", name:"LED series resistor",
  fields:[F("Vs","Supply","V","5"),F("Vf","LED forward drop","V","2.1"),F("If","LED current","A","10m")],
+ tbl:"leds",
  run(v){
    const {Vs,Vf,If} = v;
    if(!isFinite(Vs)||!isFinite(Vf)||!isFinite(If)||If<=0) return null;
    if(Vf>=Vs) return [R("Resistor","\u2014","","the supply must exceed the forward drop")];
    const r = (Vs-Vf)/If, e = nearestE24(r);
-   return [R("Resistor",r,"\u03a9"),RP("Nearest E24",e,"\u03a9"),
-           R("Current with E24",(Vs-Vf)/e,"A"),
-           R("Dissipation",(Vs-Vf)*(Vs-Vf)/e,"W","pick a part rated at least twice this")];
+   return [R("Resistor",r,"\u03a9","(Vs \u2212 Vf) \u00f7 If"),RP("Nearest E24",e,"\u03a9"),
+           R("Current with E24",(Vs-Vf)/e,"A","(Vs \u2212 Vf) \u00f7 the E24 value"),
+           R("Dissipation",(Vs-Vf)*(Vs-Vf)/e,"W","(Vs \u2212 Vf)\u00b2 \u00f7 R \u2014 pick a part rated at least twice this")];
  }},
 
 {id:"rc", group:"Filters", name:"Passive filters",
@@ -587,7 +598,7 @@ const CALCS = [
    const {type,R:r,C,L,f,Vpp}=v;
    /* what the scope would show: the magnitude already worked out, applied to
       whatever amplitude is going in. Left out entirely when none is given. */
-   const swing = m => (isFinite(Vpp) && Vpp>0) ? [R("Output, peak to peak",Vpp*m,"V","at the test frequency")] : [];
+   const swing = m => (isFinite(Vpp) && Vpp>0) ? [R("Output, peak to peak",Vpp*m,"V","input \u00d7 magnitude, at the test frequency")] : [];
    const rc=type.startsWith("RC"), rl=type==="RL low-pass"||type==="RL high-pass", rlc=type.startsWith("RLC"), high=type.includes("high"), stop=type.includes("stop");
    if(!isFinite(r)||!isFinite(f)||r<=0||f<=0||(rc&&(!isFinite(C)||C<=0))||(rl&&(!isFinite(L)||L<=0))||(rlc&&(!isFinite(L)||!isFinite(C)||L<=0||C<=0))) return null;
    const w=2*Math.PI*f;
@@ -597,16 +608,39 @@ const CALCS = [
      const phase=(high ? Math.PI/2-Math.atan(x) : -Math.atan(x))*180/Math.PI;
      const reactance=rc ? 1/(w*C) : w*L;
      const reactanceLabel=rc ? "Xc at test frequency" : "XL at test frequency";
-     return [R("Corner frequency (−3 dB)",fc,"Hz"),R("Time constant τ",tau,"s"),R(reactanceLabel,reactance,"Ω"),
-             R("Magnitude at test frequency",mag,"×"),R("Attenuation at test frequency",20*Math.log10(mag),"dB"),R("Phase at test frequency",phase,"°"),
-             R(high?"Step fall to 10 %":"Step rise 10–90 %",2.2*tau,"s"),R("Settle to 99 %",5*tau,"s")].concat(swing(mag));
+     /* x is the frequency measured in corner frequencies: x = 2\u03c0f\u03c4 = f \u00f7 fc */
+     return [R("Corner frequency (−3 dB)",fc,"Hz","1 \u00f7 (2\u03c0\u03c4)"),
+             R("Time constant τ",tau,"s", rc ? "R \u00d7 C" : "L \u00f7 R"),
+             R(reactanceLabel,reactance,"Ω", rc ? "1 \u00f7 (2\u03c0fC)" : "2\u03c0fL"),
+             R("Magnitude at test frequency",mag,"×", high ? "x \u00f7 \u221a(1 + x\u00b2), with x = f \u00f7 fc" : "1 \u00f7 \u221a(1 + x\u00b2), with x = f \u00f7 fc"),
+             R("Attenuation at test frequency",20*Math.log10(mag),"dB","20 log\u2081\u2080(magnitude)"),
+             R("Phase at test frequency",phase,"°", high ? "90\u00b0 \u2212 arctan(x)" : "\u2212arctan(x)"),
+             R(high?"Step fall to 10 %":"Step rise 10–90 %",2.2*tau,"s","2.2 \u03c4"),
+             R("Settle to 99 %",5*tau,"s","5 \u03c4")].concat(swing(mag));
    }
    const f0=1/(2*Math.PI*Math.sqrt(L*C)), z0=Math.sqrt(L/C), q=z0/r, bw=f0/q, x=w*L-1/(w*C);
    const mag=stop ? Math.abs(x)/Math.sqrt(r*r+x*x) : r/Math.sqrt(r*r+x*x);
-   const phase=(stop ? Math.atan2(r,x) : -Math.atan2(x,r))*180/Math.PI;
-   return [R("Centre frequency f0",f0,"Hz"),R("Q factor",q,"×"),R("Bandwidth (−3 dB)",bw,"Hz"),
-           R("Characteristic impedance",z0,"Ω"),R("Magnitude at test frequency",mag,"×"),R("Attenuation at test frequency",20*Math.log10(mag),"dB"),
-           R("Phase at test frequency",phase,"°"),R(stop?"Notch depth at f0":"Peak gain at f0",stop?0:1,"×")].concat(swing(mag));
+   const nullAtF0 = stop && Math.abs(x) <= r*1e-9;
+   const phase = stop
+     ? (Math.sign(x)*Math.PI/2 - Math.atan2(x,r))*180/Math.PI
+     : -Math.atan2(x,r)*180/Math.PI;
+   /* X is the net series reactance at the test frequency, 2\u03c0fL \u2212 1 \u00f7 (2\u03c0fC),
+      and it is zero at f0 \u2013 which is the whole of what happens there.   */
+   return [R("Centre frequency f0",f0,"Hz","1 \u00f7 (2\u03c0\u221a(LC))"),
+           R("Q factor",q,"×","\u221a(L \u00f7 C) \u00f7 R"),
+           R("Bandwidth (−3 dB)",bw,"Hz","f\u2080 \u00f7 Q"),
+           R("Characteristic impedance",z0,"Ω","\u221a(L \u00f7 C)"),
+           R("Magnitude at test frequency",mag,"×", stop ? "|X| \u00f7 \u221a(R\u00b2 + X\u00b2), with X = 2\u03c0fL \u2212 1 \u00f7 (2\u03c0fC)" : "R \u00f7 \u221a(R\u00b2 + X\u00b2), with X = 2\u03c0fL \u2212 1 \u00f7 (2\u03c0fC)"),
+           R("Attenuation at test frequency", nullAtF0 ? null : 20*Math.log10(mag),"dB", nullAtF0
+             ? "a perfect null in this ideal model, so there is no finite figure to print"
+             : "20 log\u2081\u2080(magnitude)"),
+           R("Phase at test frequency", nullAtF0 ? null : phase,"°", nullAtF0
+             ? "undefined at f\u2080: the output is a null, and a signal of no amplitude has no phase"
+             : (stop ? "\u00b190\u00b0 \u2212 arctan(X \u00f7 R), the leading sign following X \u2014 inductive above f\u2080, capacitive below it"
+                     : "\u2212arctan(X \u00f7 R)")),
+           R(stop?"Notch depth at f0":"Peak gain at f0",stop?0:1,"×", stop
+             ? "X = 0 at f\u2080, so L and C together are a short and nothing reaches the output. A real notch has finite depth, because real parts have loss"
+             : "X = 0 at f\u2080, so L and C together are a short and R has the whole signal")].concat(swing(mag));
  }},
 
 {id:"activefilter", group:"Filters", name:"Active filters (op-amp)",
@@ -624,8 +658,8 @@ const CALCS = [
    /* two swings worth knowing: the one at the test frequency, and the one in
       the passband - which is the one that clips the op-amp.               */
    const swing = m => !(isFinite(Vpp) && Vpp>0) ? [] :
-     [R("Output, peak to peak",Vpp*m,"V","at the test frequency"),
-      R("Passband output, peak to peak",Vpp*K,"V","check it against the op-amp's output swing")];
+     [R("Output, peak to peak",Vpp*m,"V","input \u00d7 magnitude, at the test frequency"),
+      R("Passband output, peak to peak",Vpp*K,"V","input \u00d7 K \u2014 check it against the op-amp's output swing")];
    const tau=r*C, f0=1/(2*Math.PI*tau), x=f/f0;
     /* At K = 3 the equal-component Sallen-Key has Q = 1/(3-K), which is a
        division by zero: the poles reach the imaginary axis and the circuit
@@ -635,7 +669,7 @@ const CALCS = [
        are missing.                                                       */
     if(sk && K>=3) return [
       R("Natural frequency f0",f0,"Hz"),
-      R("Passband gain",K,"×","K = 1 + Rf/Rg"),
+      R("Passband gain",K,"×","K = 1 + Rf \u00f7 Rg"),
       R("Sallen-Key Q",null,"", K===3
         ? "infinite at K = 3 – the poles sit on the jω axis and this oscillates rather than filters"
         : "negative above K = 3 – the poles have crossed into the right half-plane and this oscillates"),
@@ -643,14 +677,23 @@ const CALCS = [
     ];
    if(!sk){
      const base=high ? x/Math.sqrt(1+x*x) : 1/Math.sqrt(1+x*x), mag=K*base;
-     return [R("Corner frequency (−3 dB)",f0,"Hz"),R("Time constant τ",tau,"s"),R("Passband gain",K,"×"),
-             R("Magnitude at test frequency",mag,"×"),R("Attenuation at test frequency",20*Math.log10(mag),"dB"),
-             R("Phase at test frequency",(high?Math.PI/2-Math.atan(x):-Math.atan(x))*180/Math.PI,"°")].concat(swing(mag));
+     return [R("Corner frequency (−3 dB)",f0,"Hz","1 \u00f7 (2\u03c0RC)"),
+             R("Time constant τ",tau,"s","R \u00d7 C"),
+             R("Passband gain",K,"×","K = 1 + Rf \u00f7 Rg"),
+             R("Magnitude at test frequency",mag,"×", high ? "K \u00d7 x \u00f7 \u221a(1 + x\u00b2), with x = f \u00f7 f\u2080" : "K \u00f7 \u221a(1 + x\u00b2), with x = f \u00f7 f\u2080"),
+             R("Attenuation at test frequency",20*Math.log10(mag),"dB","20 log\u2081\u2080(magnitude)"),
+             R("Phase at test frequency",(high?Math.PI/2-Math.atan(x):-Math.atan(x))*180/Math.PI,"°", high ? "90\u00b0 \u2212 arctan(x)" : "\u2212arctan(x)")].concat(swing(mag));
    }
    const q=1/(3-K), den=Math.sqrt(Math.pow(1-x*x,2)+Math.pow(x/q,2)), mag=K*(high?x*x:1)/den;
-   return [R("Natural frequency f0",f0,"Hz"),R("Sallen-Key Q",q,"×","equal-component approximation: Q = 1 ÷ (3 − K)"),
-           R("Passband gain",K,"×"),R("Peak magnitude at f0",K*q,"×"),R("Magnitude at test frequency",mag,"×"),
-           R("Attenuation at test frequency",20*Math.log10(mag),"dB"),R("Estimated bandwidth",f0/q,"Hz")].concat(swing(mag));
+   return [R("Natural frequency f0",f0,"Hz","1 \u00f7 (2\u03c0RC), with R1 = R2 and C1 = C2"),
+           R("Sallen-Key Q",q,"×","equal-component approximation: Q = 1 ÷ (3 − K)"),
+           R("Passband gain",K,"×","K = 1 + Rf \u00f7 Rg"),
+           R("Peak magnitude at f0",K*q,"×","K \u00d7 Q"),
+           R("Magnitude at test frequency",mag,"×", high
+             ? "K x\u00b2 \u00f7 \u221a((1 \u2212 x\u00b2)\u00b2 + (x \u00f7 Q)\u00b2), with x = f \u00f7 f\u2080"
+             : "K \u00f7 \u221a((1 \u2212 x\u00b2)\u00b2 + (x \u00f7 Q)\u00b2), with x = f \u00f7 f\u2080"),
+           R("Attenuation at test frequency",20*Math.log10(mag),"dB","20 log\u2081\u2080(magnitude)"),
+           R("Estimated bandwidth",f0/q,"Hz","f\u2080 \u00f7 Q")].concat(swing(mag));
  }},
 
 {id:"difflp", group:"Filters", name:"Differential low-pass (difference amp)",
@@ -667,18 +710,19 @@ const CALCS = [
    const {R1,R2,Cf,f,Vin}=v;
    if(!isFinite(R1)||!isFinite(R2)||!isFinite(Cf)||R1<=0||R2<=0||Cf<=0) return null;
    const g=R2/R1, fc=1/(2*Math.PI*R2*Cf);
-   const out=[R("Passband gain",g,"×","below the corner – above it, see the gain at the test frequency"),R("Passband gain",20*Math.log10(g),"dB"),
-              R("Corner frequency (−3 dB)",fc,"Hz","1 / (2π · R2 · Cf)"),
-              R("Time constant τ",R2*Cf,"s")];
+   const out=[R("Passband gain",g,"×","R2 \u00f7 R1 \u2014 below the corner; above it, see the gain at the test frequency"),
+              R("Passband gain",20*Math.log10(g),"dB","20 log\u2081\u2080(gain)"),
+              R("Corner frequency (−3 dB)",fc,"Hz","1 \u00f7 (2\u03c0 \u00b7 R2 \u00b7 Cf) \u2014 where Cf's reactance equals R2"),
+              R("Time constant τ",R2*Cf,"s","R2 \u00d7 Cf")];
    const hasV = isFinite(Vin) && Vin>0;
    if(isFinite(f)&&f>0){
      const m=g/Math.sqrt(1+Math.pow(f/fc,2));
-     out.push(R("Gain at test frequency",m,"×"));
-     out.push(R("Response at test frequency",20*Math.log10(m/g),"dB","relative to the passband"));
-     if(hasV) out.push(R("Output, peak to peak",Vin*m,"V","at the test frequency"));
+     out.push(R("Gain at test frequency",m,"×","passband gain \u00f7 \u221a(1 + (f \u00f7 fc)\u00b2)"));
+     out.push(R("Response at test frequency",20*Math.log10(m/g),"dB","20 log\u2081\u2080(gain at f \u00f7 passband gain) \u2014 relative to the passband"));
+     if(hasV) out.push(R("Output, peak to peak",Vin*m,"V","input \u00d7 the gain at that frequency"));
    }
-   if(hasV) out.push(R("Passband output, peak to peak",Vin*g,"V","check it against the op-amp's output swing"));
-   out.push(R("CMRR from 1 % resistor mismatch",20*Math.log10((1+g)/0.04),"dB","the ceiling the resistors alone set, at DC. The amplifier's own CMRR, the capacitor tolerance, stray capacitance and any imbalance in the source all sit under it, and every one of them falls with frequency"));
+   if(hasV) out.push(R("Passband output, peak to peak",Vin*g,"V","input \u00d7 passband gain \u2014 check it against the op-amp's output swing"));
+   out.push(R("CMRR from 1 % resistor mismatch",20*Math.log10((1+g)/0.04),"dB","20 log\u2081\u2080((1 + gain) \u00f7 0.04), the four resistors each 1 % out. It is the ceiling the resistors alone set, at DC. The amplifier's own CMRR, the capacitor tolerance, stray capacitance and any imbalance in the source all sit under it, and every one of them falls with frequency"));
    return out;
  }},
 
@@ -688,9 +732,11 @@ const CALCS = [
    const {L,C,Rs} = v;
    if(!isFinite(L)||!isFinite(C)||L<=0||C<=0) return null;
    const f0 = 1/(2*Math.PI*Math.sqrt(L*C)), Z = Math.sqrt(L/C);
-   const out = [R("Resonant frequency",f0,"Hz"),R("Characteristic impedance",Z,"\u03a9"),
-                R("XL = XC at f0",2*Math.PI*f0*L,"\u03a9")];
-   if(isFinite(Rs)&&Rs>0){ out.push(R("Q factor",Z/Rs,"")); out.push(R("Bandwidth",f0*Rs/Z,"Hz")); }
+   const out = [R("Resonant frequency",f0,"Hz","1 \u00f7 (2\u03c0\u221a(LC))"),
+                R("Characteristic impedance",Z,"\u03a9","\u221a(L \u00f7 C)"),
+                R("XL = XC at f0",2*Math.PI*f0*L,"\u03a9","2\u03c0f\u2080L \u2014 and the two cancel, which is what resonance is")];
+   if(isFinite(Rs)&&Rs>0){ out.push(R("Q factor",Z/Rs,"","\u221a(L \u00f7 C) \u00f7 Rs"));
+                           out.push(R("Bandwidth",f0*Rs/Z,"Hz","f\u2080 \u00f7 Q")); }
    return out;
  }},
 
@@ -701,10 +747,11 @@ const CALCS = [
    const {Rin,Rf,Vin} = v;
    if(!isFinite(Rin)||!isFinite(Rf)||Rin<=0) return null;
    const g = -Rf/Rin;
-   const out = [R("Gain",g,"\u00d7"),R("Gain",20*Math.log10(Math.abs(g)),"dB"),
-                R("Input impedance",Rin,"\u03a9")];
-   if(isFinite(Vin)) out.push(R("Output",g*Vin,"V"));
-   out.push(R("Bias-balance resistor",Rin*Rf/(Rin+Rf),"\u03a9","on the non-inverting input"));
+   const out = [R("Gain",g,"\u00d7","\u2212Rf \u00f7 Rin"),
+                R("Gain",20*Math.log10(Math.abs(g)),"dB","20 log\u2081\u2080|gain|"),
+                R("Input impedance",Rin,"\u03a9","Rin alone \u2014 the inverting input is a virtual earth")];
+   if(isFinite(Vin)) out.push(R("Output",g*Vin,"V","gain \u00d7 Vin"));
+   out.push(R("Bias-balance resistor",Rin*Rf/(Rin+Rf),"\u03a9","Rin \u2225 Rf \u2014 on the non-inverting input"));
    return out;
  }},
 
@@ -715,9 +762,10 @@ const CALCS = [
    const {Rg,Rf,Vin} = v;
    if(!isFinite(Rg)||!isFinite(Rf)||Rg<=0) return null;
    const g = 1 + Rf/Rg;
-   const out = [R("Gain",g,"\u00d7"),R("Gain",20*Math.log10(g),"dB")];
-   if(isFinite(Vin)) out.push(R("Output",g*Vin,"V"));
-   out.push(R("Feedback current at 1 V out",1/(Rg+Rf),"A"));
+   const out = [R("Gain",g,"\u00d7","1 + Rf \u00f7 Rg"),
+                R("Gain",20*Math.log10(g),"dB","20 log\u2081\u2080(gain)")];
+   if(isFinite(Vin)) out.push(R("Output",g*Vin,"V","gain \u00d7 Vin"));
+   out.push(R("Feedback current at 1 V out",1/(Rg+Rf),"A","1 V \u00f7 (Rg + Rf)"));
    return out;
  }},
 
@@ -729,10 +777,11 @@ const CALCS = [
    const {R1,R2,V1,V2} = v;
    if(!isFinite(R1)||!isFinite(R2)||R1<=0) return null;
    const g = R2/R1;
-   const out = [R("Differential gain",g,"\u00d7"),R("Differential gain",20*Math.log10(g),"dB")];
-   if(isFinite(V1)&&isFinite(V2)) out.push(R("Output",g*(V2-V1),"V"));
-   out.push(R("CMRR from 1 % resistor mismatch",20*Math.log10((1+g)/0.04),"dB","the ceiling the resistors alone set, at DC. The amplifier's own CMRR, stray capacitance and any imbalance in the source all sit under it, and every one of them falls with frequency"));
-   out.push(R("CMRR from 0.1 % resistor mismatch",20*Math.log10((1+g)/0.004),"dB","the same, and with the same caveats"));
+   const out = [R("Differential gain",g,"\u00d7","R2 \u00f7 R1"),
+                R("Differential gain",20*Math.log10(g),"dB","20 log\u2081\u2080(gain)")];
+   if(isFinite(V1)&&isFinite(V2)) out.push(R("Output",g*(V2-V1),"V","gain \u00d7 (V2 \u2212 V1) \u2014 only the difference is amplified"));
+   out.push(R("CMRR from 1 % resistor mismatch",20*Math.log10((1+g)/0.04),"dB","20 log\u2081\u2080((1 + gain) \u00f7 0.04), the four resistors each 1 % out. It is the ceiling the resistors alone set, at DC. The amplifier's own CMRR, stray capacitance and any imbalance in the source all sit under it, and every one of them falls with frequency"));
+   out.push(R("CMRR from 0.1 % resistor mismatch",20*Math.log10((1+g)/0.004),"dB","20 log\u2081\u2080((1 + gain) \u00f7 0.004) \u2014 the same, and with the same caveats"));
    return out;
  }},
 
@@ -748,26 +797,28 @@ const CALCS = [
    if(!isFinite(Vref)||!isFinite(Rtop)||!isFinite(Rbot)||Rbot<=0) return null;
    const base = Vref*(1+Rbot/Rtop);
    const err  = isFinite(Iadj) ? Iadj*Rbot : 0;
-   return [R("Output",base+err,"V"),
-           R("Without pin current",base,"V"),
-           R("Shift from pin current",err,"V"),
-           R("Divider current",Vref/Rtop,"A","keep it well above the pin current")];
+   return [R("Output",base+err,"V","Vref \u00d7 (1 + Rbot \u00f7 Rtop) + Iadj \u00d7 Rbot"),
+           R("Without pin current",base,"V","Vref \u00d7 (1 + Rbot \u00f7 Rtop)"),
+           R("Shift from pin current",err,"V","Iadj \u00d7 Rbot \u2014 the adjust pin's own current, through the lower leg"),
+           R("Divider current",Vref/Rtop,"A","Vref \u00f7 Rtop \u2014 keep it well above the pin current")];
  }},
 
 {id:"ldo", group:"Power", name:"Linear regulator dissipation",
  note:["The heat a linear part has to lose, and where that puts the die."],
  fields:[F("Vin","Input","V","12"),F("Vout","Output","V","3.3"),F("Iout","Load current","A","0.5"),
          F("Rja","Package \u03b8JA","\u00b0C/W","50"),F("Ta","Ambient","\u00b0C","25")],
+ tbl:"packages",
  run(v){
    const {Vin,Vout,Iout,Rja,Ta} = v;
    if(!isFinite(Vin)||!isFinite(Vout)||!isFinite(Iout)) return null;
    const Pd = (Vin-Vout)*Iout;
-   const out = [R("Dissipation",Pd,"W"),R("Efficiency",100*Vout/Vin,"%"),
-                R("Wasted as heat",100*(Vin-Vout)/Vin,"%")];
+   const out = [R("Dissipation",Pd,"W","(Vin \u2212 Vout) \u00d7 Iout \u2014 the whole difference, at the full current"),
+                R("Efficiency",100*Vout/Vin,"%","Vout \u00f7 Vin \u00d7 100 \u2014 a linear regulator passes the current and drops the voltage, so this is the whole of it"),
+                R("Wasted as heat",100*(Vin-Vout)/Vin,"%","(Vin \u2212 Vout) \u00f7 Vin \u00d7 100")];
    if(isFinite(Rja)&&isFinite(Ta)){
      const Tj = Ta + Pd*Rja;
-     out.push(R("Junction temperature",Tj,"\u00b0C", Tj>125?"over a typical 125 \u00b0C limit":Tj>100?"getting close to the limit":"within a typical limit"));
-     out.push(R("Current at 125 \u00b0C junction",(125-Ta)/(Rja*(Vin-Vout)),"A","the most this package can pass here"));
+     out.push(R("Junction temperature",Tj,"\u00b0C", "Ta + Pd \u00d7 \u03b8JA \u2014 "+(Tj>125?"over a typical 125 \u00b0C limit":Tj>100?"getting close to the limit":"within a typical limit")));
+     out.push(R("Current at 125 \u00b0C junction",(125-Ta)/(Rja*(Vin-Vout)),"A","(125 \u2212 Ta) \u00f7 (\u03b8JA \u00d7 (Vin \u2212 Vout)) \u2014 the most this package can pass here"));
    }
    return out;
  }},
@@ -785,14 +836,16 @@ const CALCS = [
     const dI = (Vin-Vout)*D/(f*L), iPk=Iout+dI/2, iVal=Iout-dI/2;
     const dVC = isFinite(Cout)&&Cout>0 ? dI/(8*f*Cout) : NaN;
     const dVESR = isFinite(ESR)&&ESR>=0 ? dI*ESR : 0;
-    const out = [R("Duty cycle",100*D,"%"),R("Inductor average current",Iout,"A"),
-                 R("Inductor ripple \u0394IL",dI,"A",(100*dI/Iout).toFixed(1)+" % of load current"),
-                 R("Inductor peak current",iPk,"A","the saturation rating must clear this"),
-                 R("Inductor valley current",iVal,"A"),
-                 R("Input RMS ripple current",Iout*Math.sqrt(D*(1-D)),"A","sets the input capacitor"),
-                 R("Output ripple (capacitive)",dVC,"V"),R("Output ripple (ESR)",dVESR,"V"),
-                 R("Estimated output ripple",isFinite(dVC)?dVC+dVESR:NaN,"V"),
-                 RP("Inductor for 30 % ripple",(Vin-Vout)*D/(f*0.3*Iout),"H")];
+    const out = [R("Duty cycle",100*D,"%","Vout \u00f7 Vin \u00d7 100, ideal \u2014 losses push the real one a little higher"),
+                 R("Inductor average current",Iout,"A","the load current: a buck's inductor sits in series with the output"),
+                 R("Inductor ripple \u0394IL",dI,"A","(Vin \u2212 Vout) \u00d7 D \u00f7 (f \u00d7 L), which is "+(100*dI/Iout).toFixed(1)+" % of load current"),
+                 R("Inductor peak current",iPk,"A","average + \u0394IL \u00f7 2 \u2014 the saturation rating must clear this"),
+                 R("Inductor valley current",iVal,"A","average \u2212 \u0394IL \u00f7 2"),
+                 R("Input RMS ripple current",Iout*Math.sqrt(D*(1-D)),"A","Iout \u00d7 \u221a(D(1 \u2212 D)) \u2014 sets the input capacitor, and it is worst at D = 0.5"),
+                 R("Output ripple (capacitive)",dVC,"V","\u0394IL \u00f7 (8 \u00d7 f \u00d7 Cout)"),
+                 R("Output ripple (ESR)",dVESR,"V","\u0394IL \u00d7 ESR"),
+                 R("Estimated output ripple",isFinite(dVC)?dVC+dVESR:NaN,"V","the two added \u2014 a worst case, since they do not peak at the same instant"),
+                 RP("Inductor for 30 % ripple",(Vin-Vout)*D/(f*0.3*Iout),"H","(Vin \u2212 Vout) \u00d7 D \u00f7 (f \u00d7 0.3 \u00d7 Iout)")];
     if(iVal<=0) out.push(R("Mode",null,"","inductor current reaches zero — this is discontinuous mode, so the ripple estimate no longer applies"));
     return out;
   }},
@@ -808,37 +861,73 @@ const CALCS = [
     const D = 1 - Vin/Vout;
     const iL=Iout/(1-D), dI=Vin*D/(f*L), iPk=iL+dI/2, iVal=iL-dI/2;
     const dVC=isFinite(Cout)&&Cout>0 ? Iout*D/(f*Cout) : NaN;
-    const dVESR=isFinite(ESR)&&ESR>=0 ? dI*ESR : 0;
-    const out = [R("Duty cycle",100*D,"%"),R("Inductor average current",iL,"A"),
-                 R("Inductor ripple \u0394IL",dI,"A",(100*dI/iL).toFixed(1)+" % of average current"),
-                 R("Inductor peak current",iPk,"A","the switch and diode must clear this"),
-                 R("Inductor valley current",iVal,"A"),R("Output ripple (capacitive)",dVC,"V"),
-                 R("Output ripple (ESR)",dVESR,"V"),R("Estimated output ripple",isFinite(dVC)?dVC+dVESR:NaN,"V"),
-                 RP("Inductor for 30 % ripple",Vin*D/(f*0.3*iL),"H")];
+    const dVESR=isFinite(ESR)&&ESR>=0 ? iPk*ESR : 0;
+    const out = [R("Duty cycle",100*D,"%","(1 \u2212 Vin \u00f7 Vout) \u00d7 100, ideal \u2014 losses push the real one higher"),
+                 R("Inductor average current",iL,"A","Iout \u00f7 (1 \u2212 D) \u2014 a boost's inductor carries the input current, which is above the load current"),
+                 R("Inductor ripple \u0394IL",dI,"A","Vin \u00d7 D \u00f7 (f \u00d7 L), which is "+(100*dI/iL).toFixed(1)+" % of average current"),
+                 R("Inductor peak current",iPk,"A","average + \u0394IL \u00f7 2 \u2014 the switch and diode must clear this"),
+                 R("Inductor valley current",iVal,"A","average \u2212 \u0394IL \u00f7 2"),
+                 R("Output ripple (capacitive)",dVC,"V","Iout \u00d7 D \u00f7 (f \u00d7 Cout) \u2014 while the switch is on, the capacitor feeds the load alone"),
+                 R("Output ripple (ESR)",dVESR,"V","ESR \u00d7 peak inductor current \u2014 not \u0394IL as in a buck: the capacitor carries the whole load while the switch is on, then takes the full inductor current when it opens, so the step across the ESR is the peak"),
+                 R("Estimated output ripple",isFinite(dVC)?dVC+dVESR:NaN,"V","the two added \u2014 a worst case, since they do not peak at the same instant"),
+                 RP("Inductor for 30 % ripple",Vin*D/(f*0.3*iL),"H","Vin \u00d7 D \u00f7 (f \u00d7 0.3 \u00d7 average current)")];
     if(iVal<=0) out.push(R("Mode",null,"","inductor current reaches zero — this is discontinuous mode, so the ripple estimate no longer applies"));
     return out;
   }},
 
-{id:"shunt", group:"Measurement", name:"Current sense shunt",
- note:["Sizing a shunt and the amplifier in front of an ADC."],
- fields:[F("I","Current to measure","A","10"),F("Rs","Shunt","\u03a9","5m"),F("G","Amplifier gain","\u00d7","20"),
-         F("Vref","ADC reference","V","3.3"),F("bits","ADC bits","","12")],
+{id:"shunt", group:"Measurement", name:"Current-sense shunt & ADC",
+ note:[
+   "Sizes the shunt, the amplifier and the ADC range together. Enter the largest current you intend to measure, not just the current you happen to see now.",
+   "The error budget is a first-pass worst-case sum of shunt tolerance, amplifier gain error and input offset. A real design also needs the amplifier's common-mode range, drift and bandwidth.",
+   "Use Kelvin traces from the resistor's sense pads to the amplifier. A trace voltage drop added to a few millivolts of shunt signal is indistinguishable from current."
+ ],
+ fields:[FS("side","Shunt placement",["Low side (return)","High side (supply)"],"Low side (return)"),
+         F("I","Maximum current to measure","A","10"),F("Rs","Shunt resistance","\u03a9","5m"),F("G","Amplifier gain","\u00d7","20"),
+         F("Vref","ADC full-scale / reference","V","3.3"),F("bits","ADC bits","","12"),
+         F("Vos","Amplifier input offset (max)","V","20u","20u",true),F("Gerr","Amplifier gain error (max)","%","0.5"),
+         F("Rtol","Shunt tolerance","%","1"),F("Rth","Shunt thermal resistance","\u00b0C/W","50"),F("Ta","Ambient","\u00b0C","40"),
+         F("Vbus","Bus voltage for high-side check (optional)","V","12","12"),F("Vcmmax","Amplifier common-mode maximum (optional)","V","26","26")],
  run(v){
-   const {I,Rs,G,Vref,bits} = v;
-   if(!isFinite(I)||!isFinite(Rs)||Rs<=0) return null;
-   const Vs = I*Rs, g = isFinite(G)&&G>0 ? G : 1;
-   const out = [R("Shunt voltage",Vs,"V"),R("Shunt dissipation",I*I*Rs,"W","derate the part to twice this"),
-                R("Amplifier output",Vs*g,"V")];
+   const {side,I,Rs,G,Vref,bits,Vos,Gerr,Rtol,Rth,Ta,Vbus,Vcmmax} = v;
+   const i = Math.abs(I), rs = Math.abs(Rs), g = isFinite(G)&&G>0 ? G : 1;
+   if(!isFinite(i)||!isFinite(rs)||rs<=0) return null;
+   const vs = i*rs, pd = i*i*rs, vout = vs*g;
+   const out = [R("Shunt voltage at maximum current",vs,"V","I \u00d7 Rs \u2014 the burden voltage removed from the load path"),
+                R("Shunt dissipation",pd,"W","I\u00b2 \u00d7 R at the entered maximum current"),
+                R("Suggested shunt power rating",2*pd,"W","minimum 2\u00d7 margin; check pulse and overload ratings too"),
+                R("Amplifier output at maximum current",vout,"V","shunt voltage \u00d7 gain \u2014 before the ADC")];
+   if(isFinite(Ta)&&isFinite(Rth)&&Rth>=0)
+     out.push(R("Estimated shunt temperature",Ta+pd*Rth,"\u00b0C","ambient + dissipation \u00d7 the entered thermal resistance"));
    if(isFinite(Vref)&&Vref>0){
-     const full = Vref/(g*Rs);
-     out.push(R("Full scale current",full,"A", I>full?"the input above already clips":""));
-     out.push(R("Reading at this current",100*Vs*g/Vref,"% of scale"));
-     if(isFinite(bits)&&bits>0){
-       const steps = Math.pow(2,bits);
-       out.push(R("Resolution",full/steps,"A per count"));
-       out.push(R("Gain for full scale",Vref/(I*Rs),"\u00d7","if this current is meant to be full scale"));
+     const full = Vref/(g*rs), reading=100*vout/Vref;
+     out.push(R("ADC full-scale current",full,"A", "Vref \u00f7 (gain \u00d7 Rs) \u2014 "+(i>full?"the entered current clips the ADC":"with the entered gain and reference")),
+              R("ADC use at maximum current",reading,"%", "amplifier output \u00f7 Vref \u00d7 100 \u2014 "+(reading>100?"over range":"leave headroom for transients and reference tolerance")),
+              R("Gain for this current at full scale",Vref/(i*rs),"\u00d7","Vref \u00f7 (I \u00d7 Rs) \u2014 use a little less for headroom"));
+     if(isFinite(bits)&&bits>0&&bits<=32){
+       const counts=Math.pow(2,Math.round(bits)), lsbV=Vref/counts, lsbI=lsbV/(g*rs);
+       out.push(R("ADC LSB at the shunt",lsbV/g,"V","Vref \u00f7 2^bits \u00f7 gain \u2014 input-referred, before amplifier gain"),
+                R("Current resolution",lsbI,"A per count","the LSB at the shunt \u00f7 Rs"));
      }
    }
+   const eOffset=isFinite(Vos)?Math.abs(Vos)/rs:0;
+   const eGain=isFinite(Gerr)?i*Math.abs(Gerr)/100:0;
+   const eShunt=isFinite(Rtol)?i*Math.abs(Rtol)/100:0;
+   if(isFinite(Vos)||isFinite(Gerr)||isFinite(Rtol)){
+     const worst=eOffset+eGain+eShunt;
+     out.push(R("Offset-equivalent current error",eOffset,"A","input offset \u00f7 Rs \u2014 the current that would look the same as the offset"),
+              R("Gain-equivalent current error",eGain,"A","I \u00d7 gain error, at the entered maximum current"),
+              R("Shunt-tolerance current error",eShunt,"A","I \u00d7 shunt tolerance, at the entered maximum current"),
+              R("First-pass worst-case DC error",worst,"A","the three added \u2014 a worst case, since they are unlikely to be at their limits together and in the same direction"));
+   }
+   if(side==="High side (supply)"){
+     if(isFinite(Vbus)&&isFinite(Vcmmax)&&Vcmmax>0){
+       out.push(R("High-side common-mode use",100*Math.abs(Vbus)/Vcmmax,"% of rating",
+         "|Vbus| \u00f7 the amplifier's common-mode rating \u00d7 100 \u2014 "+(Math.abs(Vbus)>Vcmmax?"over the amplifier input common-mode rating":"the shunt sits near the entered bus voltage")));
+     }else if(isFinite(Vbus)) out.push(R("High-side common-mode requirement",Math.abs(Vbus),"V","choose an amplifier whose input range includes this voltage with margin"));
+   }else{
+     out.push(R("Low-side consequence",null,"","the amplifier common-mode is near ground, but the load return rises by the burden voltage"));
+   }
+   if(vs<0.02) out.push(R("Layout warning",null,"","the sense signal is under 20 mV; Kelvin routing, amplifier offset and thermoelectric junctions now matter materially"));
    return out;
  }},
 
@@ -851,6 +940,7 @@ const CALCS = [
          F("oz","Finished copper weight","oz","1"),F("dT","Allowed temperature rise","\u00b0C","20"),
          F("Tamb","Ambient temperature","\u00b0C","25","25"),F("len","Trace length","mm","50","50"),
          F("width","Selected trace width","mm","1","1"),F("V","Rail voltage (optional)","V","5")],
+ tbl:"pcb",
  run(v){
    const {I,layer,oz,dT,Tamb,len,width,V} = v;
    if(!isFinite(I)||!isFinite(oz)||!isFinite(dT)||!isFinite(Tamb)||!isFinite(len)||!isFinite(width)||
@@ -867,26 +957,29 @@ const CALCS = [
    const traceArea = width*1e-3*thicknessUM*1e-6;
    const traceR = rhoCu*(len*1e-3)/traceArea, traceDrop=I*traceR, tracePower=I*I*traceR;
    const widthVerdict = width<requiredWidth ? "selected trace is narrower than the calculated minimum" : "selected trace meets the entered temperature-rise target";
-   const out = [R("Copper thickness",thicknessUM,"\u00b5m",oz+" oz finished copper"),
-           R("Calculated minimum trace width",requiredWidth,"mm","for the entered current and allowed temperature rise"),
+   const out = [R("Copper thickness",thicknessUM,"\u00b5m","weight \u00d7 34.8 \u00b5m per ounce \u2014 "+oz+" oz finished copper"),
+           R("Calculated minimum trace width",requiredWidth,"mm","the same fit solved for width: (\u0394T \u00f7 (K \u00d7 I^a \u00d7 thickness^c))^(1\u00f7b), for the entered current and allowed rise"),
            R("Recommended trace width",recommendedWidth,"mm","1.5\u00d7 calculated minimum for layout margin"),
-           R("Trace temperature rise",traceRise,"\u00b0C",widthVerdict),R("Estimated trace temperature",traceTemp,"\u00b0C"),
-           R("Current at selected width",currentAtWidth,"A","at the entered allowed temperature rise"),
-           R("Trace resistance",traceR,"\u03a9","at estimated trace temperature"),R("Trace voltage drop",traceDrop,"V"),
-           R("Trace dissipation",tracePower,"W"),R("Design verdict",null,"",widthVerdict)];
-   if(isFinite(V) && V>0) out.splice(8,0,R("Trace voltage drop (%)",100*traceDrop/V,"%","of entered rail voltage"));
+           R("Trace temperature rise",traceRise,"\u00b0C","K \u00d7 I^a \u00d7 width^b \u00d7 thickness^c, the closed-form fit to IPC-2152 \u2014 "+widthVerdict),
+           R("Estimated trace temperature",traceTemp,"\u00b0C","ambient + the rise above"),
+           R("Current at selected width",currentAtWidth,"A","the same fit solved for current, at the entered allowed temperature rise"),
+           R("Trace resistance",traceR,"\u03a9","\u03c1L \u00f7 A, with \u03c1 taken at the estimated trace temperature"),
+           R("Trace voltage drop",traceDrop,"V","I \u00d7 R"),
+           R("Trace dissipation",tracePower,"W","I\u00b2 \u00d7 R"),R("Design verdict",null,"",widthVerdict)];
+   if(isFinite(V) && V>0) out.splice(8,0,R("Trace voltage drop (%)",100*traceDrop/V,"%","drop \u00f7 rail \u00d7 100"));
    return out;
  }},
 
 {id:"batt", group:"Measurement", name:"Battery runtime",
  fields:[F("cap","Capacity","Ah","2.6"),F("I","Average current","A","120m"),F("eff","Usable fraction","%","80")],
+ tbl:"batteries",
  run(v){
    const {cap,I,eff} = v;
    if(!isFinite(cap)||!isFinite(I)||I<=0) return null;
    const k = isFinite(eff)&&eff>0 ? eff/100 : 1;
    const h = cap*k/I;
-   return [R("Runtime",h,"h"),R("Runtime",h*60,"min"),R("Runtime",h/24,"days"),
-           R("Discharge rate",I/cap,"C","1C empties the pack in an hour")];
+   return [R("Runtime",h,"h","capacity \u00d7 usable fraction \u00f7 current"),R("Runtime",h*60,"min","the same, \u00d7 60"),R("Runtime",h/24,"days","the same, \u00f7 24"),
+           R("Discharge rate",I/cap,"C","current \u00f7 capacity \u2014 1C empties the pack in an hour")];
  }}
 ];
 
@@ -1074,7 +1167,10 @@ function ARROW(x1,y1,x2,y2,label,color){
   const p = `${x2},${y2} ${x2-h*Math.cos(a-0.4)},${y2-h*Math.sin(a-0.4)} ${x2-h*Math.cos(a+0.4)},${y2-h*Math.sin(a+0.4)}`;
   return `<line class="diagram-wire" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="1.5"/>`
        + `<polygon class="diagram-arrow-head" points="${p}" fill="${c}"/>`
-       + (label?TX((x1+x2)/2,(y1+y2)/2-6,label,"middle",c,11):"");
+       + (!label ? "" : Math.abs(y2-y1) > Math.abs(x2-x1)
+           /* vertical: the label goes beside the shaft, not along it */
+           ? TX(Math.min(x1,x2)-10,(y1+y2)/2+4,label,"end",c,11)
+           : TX((x1+x2)/2,(y1+y2)/2-6,label,"middle",c,11));
 }
 function SVG(body, w, h){
   const max = Math.max(w,560);
@@ -1253,16 +1349,36 @@ boost: (r,o) => SVG(
   TX(220,202,"ΔIL = "+gotv(o,"Inductor ripple \u0394IL")+"  ·  ΔVout = "+gotv(o,"Estimated output ripple"),
      "middle","var(--kapton)",11.5), 400, 220),
 
-shunt: (r,o) => SVG(
-  ARROW(16,50,72,50, vv(r,"I","I")) + W([[72,50],[81,50]]) +
-  RESH(100,50,"Rshunt",vv(r,"Rs","")) + W([[119,50],[180,50]]) +
-  W([[75,50],[75,96]]) + W([[75,96],[150,96]]) + DOT(75,50) +
-  W([[128,50],[128,110]]) + W([[128,110],[150,110]]) + DOT(128,50) +
-  BOX(150,80,74,46,"AMP","\u00d7"+vv(r,"G","G")) +
-  W([[224,103],[266,103]]) + VAL(245,96, got(o,"Amplifier output")) +
-  BOX(266,80,88,46,"ADC",vv(r,"bits","")+" bit") +
-  TX(310,68,"Vref "+vv(r,"Vref",""),"middle","var(--kapton)",11) +
-  TX(150,158,"Vsense "+got(o,"Shunt voltage")+" \u00b7 full scale "+got(o,"Full scale current"),"middle","var(--ink3)",11), 400, 178),
+shunt: (r,o) => {
+  const high=(r.side||"Low side (return)")==="High side (supply)";
+  const source=high
+    ? W([[24,52],[81,52]]) + RESH(100,52,"Rshunt",vv(r,"Rs","")) + W([[119,52],[250,52]]) +
+      BOX(250,28,72,48,"LOAD",vv(r,"I","")+" A") + W([[322,52],[380,52],[380,176],[24,176]])
+    : W([[24,52],[250,52]]) + BOX(250,28,72,48,"LOAD",vv(r,"I","")+" A") +
+      W([[322,52],[380,52],[380,176],[119,176]]) + RESH(100,176,"Rshunt",vv(r,"Rs","")) +
+      W([[81,176],[24,176]]);
+  /* The tap on the more positive end of the shunt goes to the + input:
+     the supply side high-side, the load side low-side. The two taps stand
+     at x=58 and x=132, clear of the shunt's own label and value, which are
+     centred on x=100. The return turns down at x=380, to the right of the
+     converter rather than through it.                                     */
+  const y = high ? 52 : 176;
+  const plus = high ? 58 : 132, minus = high ? 132 : 58;
+  const sense = W([[plus,y],[plus,114],[150,114]]) + W([[minus,y],[minus,134],[150,134]]) +
+                DOT(plus,y) + DOT(minus,y) +
+                TX(146,108,"+","end","var(--ink2)",12) + TX(146,128,"\u2212","end","var(--ink2)",12);
+  return SVG(
+    source + sense +
+    ARROW(38,20,150,20,vv(r,"I","I")) +
+    NODE(24,38,"Vbus+","start") + NODE(24,192,"return","start") +
+    BOX(150,100,72,48,"INA","G = "+vv(r,"G","")) + W([[222,124],[266,124]]) +
+    VAL(244,116,got(o,"Amplifier output at maximum current"),"middle") +
+    BOX(266,100,88,48,"ADC",vv(r,"bits","")+" bit") +
+    TX(310,164,"Vref "+vv(r,"Vref",""),"middle","var(--kapton)",11) +
+    TX(200,218,"Vsense = "+gotv(o,"Shunt voltage at maximum current")+"  \u00b7  Pshunt = "+gotv(o,"Shunt dissipation"),"middle","var(--ink3)",11) +
+    TX(200,240,"full scale = "+gotv(o,"ADC full-scale current")+"  \u00b7  LSB = "+gotv(o,"Current resolution"),"middle","var(--kapton)",11.5) +
+    TX(200,262,high?"high-side: check the amplifier common-mode rating":"low-side: return rises by the burden voltage","middle","var(--esd)",10.5), 400, 280);
+},
 
 trace: (r,o) => SVG(
   TX(200,28,vv(r,"layer","External")+" layer \u00b7 "+vv(r,"oz","1")+" oz copper","middle","var(--ink3)",11) +
@@ -1372,7 +1488,7 @@ DIAGRAMS.i2c = (r,o) => SVG(
   W([[42,100],[344,100]]) + NODE(42,86,"SDA","start") + W([[42,148],[300,148]]) + NODE(42,134,"SCL","start") +
   W([[132,42],[132,55]]) + RESV(132,74,"Rp",got(o,"Effective pull-up resistance")) + W([[132,93],[132,100]]) +
   W([[260,42],[260,55]]) + RESV(260,74,"Rp",got(o,"Effective pull-up resistance")) + W([[260,93],[260,96]]) + JUMPV(260,100,4) + W([[260,104],[260,148]]) +
-  DOT(340,100) + W([[340,100],[340,121]]) + CAPV(340,125,"Cbus / line",vv(r,"Cbus","")) + W([[340,129],[340,164]]) + GND(340,164) +
+  DOT(340,100) + W([[340,100],[340,121]]) + CAPV(340,125,"Cbus",vv(r,"Cbus","")) + W([[340,129],[340,164]]) + GND(340,164) +
   TX(200,190,"rise time (30–70 %) = "+gotv(o,"Actual rise time"),"middle","var(--kapton)",11.5) +
   TX(200,212,"allowed R = "+gotv(o,"Minimum pull-up resistance")+" to "+gotv(o,"Maximum pull-up resistance"),"middle","var(--ink3)",10.5) +
   TX(200,234,"sink current = "+gotv(o,"Low-level sink current"),"middle","var(--esd)",11), 400, 251);
@@ -1583,6 +1699,619 @@ function parseList(t){
   return String(t||"").split(/[,;\s]+/).map(x=>parseSI(x)).filter(x=>isFinite(x) && x!==0);
 }
 
+/* ---------- reference tables ----------------------------------------------
+   Each section is written the way a calculator is: a heading, the note as
+   points, then the figures. None of it is worked out from anything entered;
+   it is the shelf beside the bench.                                        */
+
+/* The one place a note is turned into markup, for calculators and tables
+   alike. One point is a sentence; a lone bullet is noise.                  */
+function noteHTML(note){
+  const pts = [].concat(note||[]).filter(Boolean);
+  if(!pts.length) return "";
+  return pts.length===1 ? `<p>${esc(pts[0])}</p>`
+    : `<ul class="notelist">${pts.map(n=>`<li>${esc(n)}</li>`).join("")}</ul>`;
+}
+
+const E24_M = [10,11,12,13,15,16,18,20,22,24,27,30,33,36,39,43,47,51,56,62,68,75,82,91];
+const E12_M = [10,12,15,18,22,27,33,39,47,56,68,82];
+const E6_M  = [10,15,22,33,47,68];
+
+function eseriesTableHTML(){
+  const row = m => `<tr><td class="m"><b>${m}</b></td>
+      <td class="num m">•</td>
+      <td class="num m">${E12_M.includes(m)?"•":""}</td>
+      <td class="num m">${E6_M.includes(m)?"•":""}</td></tr>`;
+  const table = list => `<table><thead><tr><th>Value</th>
+      <th class="num">E24</th><th class="num">E12</th><th class="num">E6</th></tr></thead>
+      <tbody>${list.map(row).join("")}</tbody></table>`;
+  const tol = [["E3","±40 %"],["E6","±20 %"],["E12","±10 %"],["E24","±5 %"],
+               ["E48","±2 %"],["E96","±1 %"],["E192","±0.5 %"]];
+  return `<h2>Standard values — the E series</h2>
+    ${noteHTML([
+      "One decade is listed. Multiply any of it by any power of ten: 27 is also 2.7 Ω, 270 Ω, 27 kΩ and 2.7 MΩ.",
+      "The columns nest. Every E6 value is in E12, and every E12 value is in E24.",
+      "The step between neighbours is about 10 %, and that is the whole design of the series: a ±5 % part reaches almost exactly to the next E24 value, so the series and its tolerance together cover every resistance with no gaps and little overlap. Which is why each series carries its own tolerance.",
+      "E48, E96 and E192 subdivide the same decade more finely. The 1 % parts you buy are E96, and the SMD resistor code calculator decodes their EIA-96 marking.",
+      "E24 is not perfectly geometric: a few values were rounded when the series was set, which is why 27 sits where 26 would."
+    ])}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:0 22px">
+      ${table(E24_M.slice(0,12))}${table(E24_M.slice(12))}</div>
+    <div class="tscroll"><table style="margin-top:14px"><thead><tr><th>Series</th>${
+      tol.map(t=>`<th class="num">${t[0]}</th>`).join("")}</tr></thead>
+      <tbody><tr><td>Tolerance</td>${tol.map(t=>`<td class="num m">${t[1]}</td>`).join("")}</tr></tbody></table></div>`;
+}
+
+/* Outlines are the standard packages. Power is what a general-purpose
+   thick-film part of that size is usually rated at, and the voltage is its
+   maximum working voltage — both are per family, not per standard.        */
+const SMD_SIZES = [
+  {imp:"01005", met:"0402", l:0.4, w:0.2,  p:1/32, v:15},
+  {imp:"0201",  met:"0603", l:0.6, w:0.3,  p:1/20, v:25},
+  {imp:"0402",  met:"1005", l:1.0, w:0.5,  p:1/16, v:50},
+  {imp:"0603",  met:"1608", l:1.6, w:0.8,  p:1/10, v:50},
+  {imp:"0805",  met:"2012", l:2.0, w:1.25, p:1/8,  v:150},
+  {imp:"1206",  met:"3216", l:3.2, w:1.6,  p:1/4,  v:200},
+  {imp:"1210",  met:"3225", l:3.2, w:2.5,  p:1/3,  v:200},
+  {imp:"1812",  met:"4532", l:4.5, w:3.2,  p:1/2,  v:200},
+  {imp:"2010",  met:"5025", l:5.0, w:2.5,  p:3/4,  v:200},
+  {imp:"2512",  met:"6332", l:6.4, w:3.2,  p:1,    v:200}
+];
+function smdPowerName(p){
+  const f = [[1/32,"1/32"],[1/20,"1/20"],[1/16,"1/16"],[1/10,"1/10"],[1/8,"1/8"],
+             [1/4,"1/4"],[1/3,"1/3"],[1/2,"1/2"],[3/4,"3/4"],[1,"1"]];
+  const hit = f.find(x => Math.abs(x[0]-p) < 1e-9);
+  return (hit ? hit[1] : String(p)) + " W";
+}
+function smdSizeTableHTML(){
+  const row = s => `<tr><td class="m"><b>${s.imp}</b></td><td class="num m">${s.met}</td>
+      <td class="num m" style="white-space:nowrap">${s.l.toFixed(1)} × ${s.w}</td>
+      <td class="num m">${smdPowerName(s.p)}</td><td class="num m">${s.v} V</td>
+      <td class="num m">${siFmt(Number((s.v*s.v/s.p).toPrecision(2)),"Ω")}</td></tr>`;
+  return `<h2>Chip resistor sizes</h2>
+    ${noteHTML([
+      "The imperial code is the outline in thousandths of an inch: 0805 is 0.08 by 0.05 inches. The metric code is the same outline in tenths of a millimetre.",
+      "They collide. Metric 0402 is imperial 01005, and imperial 0402 is metric 1005 — two sizes apart, one number. Say which system you mean when you order.",
+      "The last column is the resistance above which the voltage rating binds first: past it the part reaches its maximum working voltage before it reaches its power rating, so a 1206 in a 200 V divider is limited by the volts, not the watts. Below it, the power rating is the one to check.",
+      "Those power figures are the common general-purpose thick-film ratings. Higher-power families exist in every one of these sizes, and the datasheet for the part you are buying governs.",
+      "Each is quoted at 70 °C ambient and derates to nothing by about 155 °C, on the footprint the datasheet specifies. The board is the heatsink, so a thermally starved pad reaches its rating early."
+    ])}
+    <div class="tscroll"><table><thead><tr>
+      <th>Imperial</th><th class="num">Metric</th><th class="num asis">L × W mm</th>
+      <th class="num">Power</th><th class="num">Max V</th><th class="num">Volts bind above</th></tr></thead>
+      <tbody>${SMD_SIZES.map(row).join("")}</tbody></table></div>`;
+}
+
+function capCode(pf){
+  if(pf < 10) return String(pf);
+  let m = pf, e = 0;
+  while(m >= 100){ m /= 10; e++; }
+  return String(Math.round(m)) + String(e);
+}
+const CAP_DEC = [1e-12,10e-12,22e-12,47e-12,100e-12,220e-12,470e-12,1e-9,2.2e-9,4.7e-9,
+                 10e-9,22e-9,47e-9,100e-9,220e-9,470e-9,1e-6,2.2e-6,4.7e-6,10e-6];
+function capValueTableHTML(){
+  const row = f => {
+    const pf = Math.round(f*1e12*1000)/1000;
+    return `<tr><td class="m"><b>${siFmt(f,"F")}</b></td><td class="num m">${capCode(pf)}</td></tr>`;
+  };
+  const half = Math.ceil(CAP_DEC.length/2);
+  const table = list => `<table><thead><tr><th>Value</th><th class="num">Marking</th></tr></thead>
+      <tbody>${list.map(row).join("")}</tbody></table>`;
+  const tolr = [["C","±0.25 pF"],["D","±0.5 pF"],["F","±1 %"],["G","±2 %"],
+                ["J","±5 %"],["K","±10 %"],["M","±20 %"],["Z","+80 / −20 %"]];
+  const diel = [
+    ["C0G / NP0","−55 to +125 °C","0 ±30 ppm/K","Class 1. The value barely moves. Timing, filters, anything measured."],
+    ["X7R","−55 to +125 °C","±15 %","Class 2. The general-purpose decoupling ceramic."],
+    ["X5R","−55 to +85 °C","±15 %","The same, where a smaller case or a higher value is wanted."],
+    ["X6S","−55 to +105 °C","±22 %","Higher density again, and looser with it."],
+    ["Y5V","−30 to +85 °C","+22 / −82 %","Avoid anywhere the value matters at all."]
+  ];
+  return `<h2>Ceramic capacitors</h2>
+    ${noteHTML([
+      "Ceramics follow the same E series as resistors, usually E6 — 10 15 22 33 47 68 — or E12.",
+      "The three-digit marking is two significant figures and a count of zeros, in picofarads: 104 is 10 followed by four zeros, 100 000 pF, which is 100 nF.",
+      "Under 10 pF the number is written plainly, and a decimal point is written as an R, so 4R7 is 4.7 pF.",
+      "A letter after the digits is the tolerance: 104K is 100 nF ±10 %."
+    ])}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 22px">
+      ${table(CAP_DEC.slice(0,half))}${table(CAP_DEC.slice(half))}</div>
+    <div class="tscroll"><table style="margin-top:14px"><thead><tr><th>Letter</th>${
+      tolr.map(t=>`<th class="num">${t[0]}</th>`).join("")}</tr></thead>
+      <tbody><tr><td>Tolerance</td>${tolr.map(t=>`<td class="num m">${t[1]}</td>`).join("")}</tr></tbody></table></div>
+    <h2 style="margin-top:22px">Dielectric codes</h2>
+    ${noteHTML([
+      "Three characters: the lowest temperature, the highest, and how far the capacitance may wander between them. X7R is −55 °C, +125 °C, ±15 %.",
+      "One thing no code tells you: a class 2 ceramic loses capacitance under DC bias, and the smaller the case the more it loses. A 10 µF X5R rated 25 V can measure well under half of that sitting at 12 V, and none of it shows up in the tolerance.",
+      "Where the value has to be right, read the part's own bias curve — or buy a bigger case, a higher voltage rating, or C0G."
+    ])}
+    <div class="tscroll"><table><thead><tr><th>Code</th><th>Range</th><th class="num">Change</th><th>Use</th></tr></thead>
+      <tbody>${diel.map(d=>`<tr><td class="m"><b>${d[0]}</b></td><td class="m">${d[1]}</td>
+        <td class="num m">${d[2]}</td><td>${d[3]}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+const ELEC_DEC = [1,10,100,1000,10000];
+const ELEC_E12_ONLY = [1.2,1.8,2.7,3.9,5.6,8.2];
+const ELEC_V  = [6.3,10,16,25,35,50,63,100,160,200,250,400,450];
+const CAP_FAM = [
+  ["Aluminium electrolytic","0.1 µF – 100 mF","6.3 – 450 V","High","The reservoir. Cheap per microfarad, and nothing else comes close on bulk. Dries out; the life rule is the one that matters."],
+  ["Aluminium polymer","10 µF – 1 mF","2.5 – 100 V","Very low","Solid electrolyte. Takes far more ripple, lasts far longer, leaks more, and stops at lower voltages."],
+  ["Tantalum","0.1 – 1000 µF","2.5 – 50 V","Low","Small and stable — but it fails short, and loudly. Derate to about half the rated voltage."],
+  ["Film, PP or PET","1 nF – 100 µF","50 V – kV","Very low","No polarity, no drift, no wear-out. Bulky. Snubbers, mains X and Y, anything that must not fail short."],
+  ["Ceramic, class 2","1 nF – 100 µF","4 – 100 V","Very low","Small and quick, but loses capacitance under DC bias."]
+];
+function capElectrolyticHTML(){
+  /* integer mantissa first, so 22 × 1000 / 10 lands on 2200 and not beside it */
+  const grid = E6_M.map(m => ELEC_DEC.map(d => m*d/100));
+  const life = [105,95,85,75,65,55].map(t =>
+    `<tr><td class="num m"><b>${t} °C</b></td><td class="num m">× ${Math.pow(2,(105-t)/10)}</td>
+       <td class="num m">${Math.round(2000*Math.pow(2,(105-t)/10)).toLocaleString("en")} h</td>
+       <td class="num m">${(2000*Math.pow(2,(105-t)/10)/8760).toFixed(1)} years</td></tr>`).join("");
+  return `<h2>Electrolytic capacitors</h2>
+    ${noteHTML([
+      "Aluminium electrolytics follow E6 — 1.0, 1.5, 2.2, 3.3, 4.7, 6.8 — and the table is that series whole, from 0.1 µF to 6 800 µF.",
+      "The E12 in-betweens, 1.2, 1.8, 2.7, 3.9, 5.6 and 8.2, are real series values, and they turn up in polymer, in tantalum and in the smaller aluminium cans. Most aluminium electrolytic ranges stop at E6, so treat one as something to check the catalogue for rather than to assume.",
+      "Past 10 000 µF the screw-terminal cans carry on, and thin out as they climb — often to E3, which is 1, 2.2 and 4.7 alone.",
+      "Tolerance is ±20 %, and often −10/+50 % on the older parts. Which is fine, because nothing here is chosen for its exact value.",
+      "Voltage ratings come from their own standard list, and there is nothing between them."
+    ])}
+    <div class="tscroll"><table><thead><tr><th class="num asis" colspan="5">Standard values — µF</th></tr></thead>
+      <tbody>${grid.map(r=>`<tr>${r.map(v=>`<td class="num m"><b>${v}</b></td>`).join("")}</tr>`).join("")}</tbody></table></div>
+    <div class="tscroll"><table style="margin-top:14px"><thead><tr><th>Rating</th>${
+      ELEC_V.map(v=>`<th class="num">${v}</th>`).join("")}</tr></thead>
+      <tbody><tr><td class="m">volts</td>${ELEC_V.map(v=>`<td class="num m">${v} V</td>`).join("")}</tr></tbody></table></div>
+    <h2 style="margin-top:22px">What actually decides the part</h2>
+    ${noteHTML([
+      "Not the capacitance. A reservoir capacitor is picked on ripple current first and capacitance second, and it is worth knowing which of the two the datasheet is quoting at you.",
+      "Ripple current is a thermal rating, quoted at 100 or 120 Hz at the maximum temperature. The heat is Irms² × ESR, made inside a sealed can that has to lose it through its own leads and case. Exceed it and nothing fails today — the electrolyte leaves faster, and the part dies early.",
+      "ESR is what turns that ripple current into ripple voltage, and it is the reason a bank of smaller capacitors often beats one large one: the ESRs go in parallel with the capacitances.",
+      "ESR also climbs steeply as the part gets cold, so a supply that is quiet on the bench can be noisy at −20 °C."
+    ])}
+    <h2 style="margin-top:22px">The life rule</h2>
+    ${noteHTML([
+      "An electrolytic wears out, at a rate set by its temperature. Every 10 °C below the rated maximum roughly doubles the hours. Below, a common 2 000 h at 105 °C part.",
+      "Which is the whole argument for keeping the reservoir away from the heatsink, and for reading the endurance figure — 1 000, 2 000, 5 000 or 10 000 hours — as carefully as the capacitance.",
+      "The temperature that counts is the capacitor's own: ambient plus whatever its ripple current is making inside it."
+    ])}
+    <div class="tscroll"><table><thead><tr><th class="num">At</th>
+      <th class="num">Multiplier</th><th class="num">Hours</th><th class="num">Running non-stop</th></tr></thead>
+      <tbody>${life}</tbody></table></div>
+    <h2 style="margin-top:22px">Which family</h2>
+    ${noteHTML([
+      "Polarity is not a guideline. An aluminium electrolytic tolerates about a volt the wrong way and no more; past that it heats, vents and empties itself over the board.",
+      "Where the voltage can reverse — and it can, on any rail with inductance in it — use a bipolar part or a film capacitor.",
+      "The ranges below are what the families span, not what any one series offers."
+    ])}
+    <div class="tscroll"><table><thead><tr><th>Type</th><th class="num">Range</th>
+      <th class="num">Voltage</th><th class="num">ESR</th><th>Character</th></tr></thead>
+      <tbody>${CAP_FAM.map(f=>`<tr><td class="m"><b>${f[0]}</b></td><td class="num m">${f[1]}</td>
+        <td class="num m">${f[2]}</td><td class="num m">${f[3]}</td><td>${f[4]}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+/* Core families, as classes rather than parts. Bsat and permeability are the
+   range the class spans; the core you buy carries its own figures.         */
+const CORE_MAT = [
+  ["Ferrite, MnZn","2 000 – 15 000","0.4 – 0.5 T","Hard","Switchers to a few hundred kHz, common-mode chokes, transformers."],
+  ["Ferrite, NiZn","15 – 1 500","0.3 – 0.4 T","Hard","High frequency: RF chokes, ferrite beads, EMI."],
+  ["Powdered iron","10 – 100","1.2 – 1.5 T","Soft","Cheap, tolerant of DC bias, lossy — watch it at high frequency."],
+  ["Sendust / Kool Mµ","26 – 125","≈ 1.0 T","Soft","PFC and output chokes. Lower loss than iron powder."],
+  ["High flux","14 – 160","≈ 1.5 T","Soft","The best DC-bias behaviour of the powder cores."],
+  ["MPP","14 – 550","≈ 0.75 T","Soft","Lowest core loss of the powders, and the dearest."],
+  ["Silicon steel","high","1.5 – 2.0 T","Hard","Mains frequency only — laminations, 50/60 Hz transformers."]
+];
+const IND_DEC = [1e-6,1.5e-6,2.2e-6,3.3e-6,4.7e-6,6.8e-6,10e-6,15e-6,22e-6,33e-6,47e-6,68e-6,
+                 100e-6,150e-6,220e-6,330e-6,470e-6,680e-6,1e-3,2.2e-3];
+function indCode(uh){
+  if(uh < 10) return String(uh).indexOf(".") < 0 ? uh + "R0" : String(uh).replace(".","R");
+  let m = uh, e = 0;
+  while(m >= 100){ m /= 10; e++; }
+  return String(Math.round(m)) + String(e);
+}
+function inductorRefHTML(){
+  const row = h => {
+    const uh = Math.round(h*1e6*1000)/1000;
+    return `<tr><td class="m"><b>${siFmt(h,"H")}</b></td><td class="num m">${indCode(uh)}</td></tr>`;
+  };
+  const half = Math.ceil(IND_DEC.length/2);
+  const table = list => `<table><thead><tr><th>Value</th><th class="num">Marking</th></tr></thead>
+      <tbody>${list.map(row).join("")}</tbody></table>`;
+  return `<h2>Standard inductor values</h2>
+    ${noteHTML([
+      "The E6 and E12 series once more.",
+      "The three-digit marking works like a capacitor's, but counts microhenries rather than picofarads: 101 is 100 µH, 223 is 22 mH. Below 10 µH the decimal point is written as an R, so 4R7 is 4.7 µH.",
+      "The same marking on a capacitor and on an inductor means two different things. The only way to tell is which part you are holding."
+    ])}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 22px">
+      ${table(IND_DEC.slice(0,half))}${table(IND_DEC.slice(half))}</div>
+    <h2 style="margin-top:22px">Core materials</h2>
+    ${noteHTML([
+      "The material decides how much flux the core takes before it gives up, and — just as important — how it gives up.",
+      "Hard against soft is the practical difference. A ferrite holds its inductance and then loses it over a few amps; past the knee the choke is very nearly a piece of wire, and the current rises until something else stops it.",
+      "A powder core rolls off gradually instead, giving up perhaps a third of its inductance well before it is in trouble. Ferrite is the lower loss; powder is the one that fails politely and tolerates DC bias.",
+      "Isat is quoted at an inductance drop the maker chooses — 10 %, 20 % or 30 % — so two parts labelled 5 A are not comparable until you check which drop each one meant.",
+      "Irms is a thermal figure: the current for a stated temperature rise, usually 40 °C, in the datasheet's own test conditions. You have to stay under both.",
+      "Bsat falls as the core heats, so the margin you measure cold is not the margin you keep."
+    ])}
+    <div class="tscroll"><table><thead><tr><th>Material</th><th class="num asis">µi</th>
+      <th class="num asis">Bsat</th><th class="num">Knee</th><th>Where</th></tr></thead>
+      <tbody>${CORE_MAT.map(c=>`<tr><td class="m"><b>${c[0]}</b></td><td class="num m">${c[1]}</td>
+        <td class="num m">${c[2]}</td><td class="num m">${c[3]}</td><td>${c[4]}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+/* The standard voltages, and the 1 W 1N47xx part that carries each one. */
+const ZENERS = [
+  [2.4,""],[2.7,""],[3.0,""],[3.3,"1N4728"],[3.6,"1N4729"],[3.9,"1N4730"],[4.3,"1N4731"],
+  [4.7,"1N4732"],[5.1,"1N4733"],[5.6,"1N4734"],[6.2,"1N4735"],[6.8,"1N4736"],[7.5,"1N4737"],
+  [8.2,"1N4738"],[9.1,"1N4739"],[10,"1N4740"],[11,"1N4741"],[12,"1N4742"],[13,"1N4743"],
+  [15,"1N4744"],[16,"1N4745"],[18,"1N4746"],[20,"1N4747"],[22,"1N4748"],[24,"1N4749"],
+  [27,"1N4750"],[30,"1N4751"],[33,"1N4752"],[36,"1N4753"],[39,"1N4754"],[43,"1N4755"],
+  [47,"1N4756"],[51,"1N4757"],[56,"1N4758"],[62,"1N4759"],[68,"1N4760"],[75,"1N4761"],
+  [82,"1N4762"],[91,"1N4763"],[100,"1N4764"]
+];
+function zenerTableHTML(){
+  const band = v => v < 5 ? ["−","var(--esd)"] : v < 6.2 ? ["≈ 0","var(--ok)"] : ["+","var(--kapton)"];
+  const row = z => {
+    const b = band(z[0]);
+    return `<tr><td class="m"><b>${z[0]<10?z[0].toFixed(1):z[0]} V</b></td><td class="m">${z[1]||"—"}</td>
+      <td class="num m" style="color:${b[1]}">${b[0]}</td></tr>`;
+  };
+  const half = Math.ceil(ZENERS.length/2);
+  const table = list => `<table><thead><tr><th class="asis">Vz</th><th>1 W part</th>
+      <th class="num">Tempco</th></tr></thead><tbody>${list.map(row).join("")}</tbody></table>`;
+  return `<h2>Standard zener voltages</h2>
+    ${noteHTML([
+      "The E24 series again, from 2.4 V up.",
+      "The part numbers are the 1 W 1N47xx family. The same voltages come as BZX55 and BZX79 in 0.5 W through-hole and BZT52 in SOD-123, named by the voltage with the decimal point written as a V, so 5.1 V is BZX79-C5V1.",
+      "The 1 W family starts at 3.3 V. Below that the three standard voltages are 500 mW parts: 1N4370A, 1N4371A and 1N4372A.",
+      "The tempco column is the sign, not a figure. The magnitude runs from roughly −2 mV/K at 3.3 V to several mV/K at the top of the range, and it is in the datasheet for the part you have."
+    ])}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0 22px">
+      ${table(ZENERS.slice(0,half))}${table(ZENERS.slice(half))}</div>
+    <h2 style="margin-top:22px">Why the middle of the range is the good part</h2>
+    ${noteHTML([
+      "Two different mechanisms share the name. Below about 5 V it is true zener breakdown, and the voltage falls as the part warms. Above about 6 V it is avalanche, and the voltage rises.",
+      "Between them the two cancel. Near 5.6 V the drift is close to nothing, which is why that value and the compensated 6.2 V references turn up wherever stability matters.",
+      "The knee follows the same story: sharpest, and the dynamic impedance lowest, around 6 to 8 V. Below 3 V the knee is soft enough that the part barely regulates, and the impedance climbs again at the top of the range.",
+      "If the circuit lets you choose the voltage, choose from the middle.",
+      "A zener is a rough regulator either way: the voltage moves with current, so quote it at the current you will actually run."
+    ])}`;
+}
+
+const LED_VF = [
+  ["Infrared","850 – 940 nm","GaAlAs","1.2 – 1.6"],
+  ["Red","620 – 630 nm","AlGaInP","1.8 – 2.2"],
+  ["Orange / amber","600 – 610 nm","AlGaInP","1.9 – 2.2"],
+  ["Yellow","585 – 595 nm","AlGaInP","1.9 – 2.2"],
+  ["Green, yellowish","565 nm","GaP","1.9 – 2.2"],
+  ["Green, pure","520 – 530 nm","InGaN","2.8 – 3.5"],
+  ["Blue","460 – 470 nm","InGaN","2.8 – 3.5"],
+  ["White","blue die + phosphor","InGaN","2.8 – 3.5"],
+  ["Violet / UV-A","380 – 410 nm","InGaN","3.1 – 4.0"]
+];
+function ledVfTableHTML(){
+  return `<h2>Forward voltage by colour</h2>
+    ${noteHTML([
+      "An LED's forward voltage is set by the bandgap of the die, and the bandgap is what sets the colour, so the two travel together. These are indicator LEDs at about 20 mA.",
+      "Green is the one that catches people. Both green rows are sold as a green LED: the old yellowish-green GaP part drops about 2.1 V, and the pure green InGaN part drops about 3.2 V, the same as a blue. Size the resistor for the wrong one on a 5 V rail and the current lands well off target; on a 3.3 V rail the calculation stops working altogether.",
+      "These are ranges because that is what they are. Vf varies between makers, rises with current, and falls about 2 mV per degree as the part warms — the same drift as any diode. Power LEDs are rated at 350 mA or more and sit higher again.",
+      "Design from the datasheet's Vf at the current you intend, and take the maximum rather than the typical where the resistor has to guarantee a minimum brightness.",
+      "Give every LED its own resistor. Two in parallel on one resistor do not share, because the one with the lower Vf takes the current, warms up, and drops its Vf further."
+    ])}
+    <div class="tscroll"><table><thead><tr><th>Colour</th><th class="num">Wavelength</th>
+      <th>Die</th><th class="num asis">Vf</th></tr></thead>
+      <tbody>${LED_VF.map(l=>`<tr><td><b>${l[0]}</b></td><td class="num m">${l[1]}</td>
+        <td class="m">${l[2]}</td><td class="num m">${l[3]} V</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+/* Standard stand-off voltages, and what the common families are rated at. */
+const TVS_VRWM = [5.0,6.0,6.5,7.0,7.5,8.0,8.5,9.0,10,11,12,13,14,15,16,17,18,20,22,24,26,28,30,
+                  33,36,40,43,45,48,51,54,58,60,64,70,75,78,85,90,100,110,120,130,150,160,170,180,200];
+const TVS_FAM = [
+  ["SMF","SOD-123FL","200 W","5 – 170 V"],
+  ["SMAJ","DO-214AC / SMA","400 W","5 – 440 V"],
+  ["SMBJ","DO-214AA / SMB","600 W","5 – 440 V"],
+  ["P6KE","DO-15 axial","600 W","6.8 – 440 V"],
+  ["SMCJ","DO-214AB / SMC","1 500 W","5 – 440 V"],
+  ["1.5KE","DO-201 axial","1 500 W","6.8 – 440 V"],
+  ["5KP","P600 axial","5 000 W","5 – 250 V"]
+];
+function tvsRefHTML(){
+  const table = list => `<table><thead><tr><th class="num">VRWM</th></tr></thead>
+      <tbody>${list.map(v=>`<tr><td class="num m"><b>${v<10?v.toFixed(1):v} V</b></td></tr>`).join("")}</tbody></table>`;
+  const cols = 4, per = Math.ceil(TVS_VRWM.length/cols);
+  const chunks = [];
+  for(let i=0;i<cols;i++) chunks.push(TVS_VRWM.slice(i*per,(i+1)*per));
+  const wave = [
+    ["IEC 61000-4-2","ESD, 1 ns rise","A finger. Rated in kV, not watts — an ESD diode has almost no surge energy."],
+    ["8/20 µs","Lightning current","What a surge arrester and a varistor are rated against."],
+    ["10/1000 µs","Surge energy","The waveform every TVS power rating here is quoted at."],
+    ["IEC 61000-4-5","Combination wave","1.2/50 µs open circuit, 8/20 µs short circuit — the immunity test."]
+  ];
+  return `<h2>Standard stand-off voltages</h2>
+    ${noteHTML([
+      "VRWM is the voltage the part sits at all day and does nothing. It has to clear your highest normal working voltage — supply tolerance, ripple and regulation included — or the TVS conducts in normal service and cooks.",
+      "SMBJ12A is a 600 W part standing off 12 V, unidirectional, with the tighter 5 % breakdown that the A suffix marks. A C before it, SMBJ12CA, makes it bidirectional, which is what an AC line or a signal that swings both ways needs."
+    ])}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:0 18px">
+      ${chunks.map(table).join("")}</div>
+    <h2 style="margin-top:22px">Families</h2>
+    ${noteHTML([
+      "Those powers are all at 10/1000 µs, once, at 25 °C. A shorter pulse carries far more; a repeated one, or a hot part, far less. Comparing two TVS diodes means first checking they are quoted at the same waveform.",
+      "The ranges are what the families span, not a promise that every voltage is stocked in every one."
+    ])}
+    <div class="tscroll"><table><thead><tr><th>Family</th><th>Package</th>
+      <th class="num">Peak power</th><th class="num">VRWM range</th></tr></thead>
+      <tbody>${TVS_FAM.map(f=>`<tr><td class="m"><b>${f[0]}</b></td><td class="m">${f[1]}</td>
+        <td class="num m">${f[2]}</td><td class="num m">${f[3]}</td></tr>`).join("")}</tbody></table></div>
+    <h2 style="margin-top:22px">The three voltages, in order</h2>
+    ${noteHTML([
+      "VRWM is where it stands off. VBR, the breakdown, is where it starts to conduct, about 1.1 × VRWM. VC, the clamping voltage, is where it ends up at full surge current, another 1.3 to 1.4 × above that.",
+      "So the part clamps at roughly 1.4 to 1.6 × the voltage it stands off — and it is VC, not VRWM and not VBR, that has to sit under the absolute maximum of whatever is behind it.",
+      "Squeezing VRWM up against the rail to get VC down is the usual trap: the leakage at VRWM climbs steeply as you approach breakdown, which a battery circuit feels.",
+      "A TVS clamps; it does not limit current. Something ahead of it — the source impedance, a series resistor, a fuse, a PTC — has to set how much passes through."
+    ])}
+    <div class="tscroll"><table><thead><tr><th>Waveform</th><th>Is</th><th>Meaning</th></tr></thead>
+      <tbody>${wave.map(w=>`<tr><td class="m"><b>${w[0]}</b></td><td class="m">${w[1]}</td>
+        <td>${w[2]}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+/* Standard families. The part numbers and their voltage steps are the
+   families themselves; the forward drops are classes of diode, not parts. */
+const D_1N400X = [["1N4001",50],["1N4002",100],["1N4003",200],["1N4004",400],
+                  ["1N4005",600],["1N4006",800],["1N4007",1000]];
+const D_1N540X = [["1N5400",50],["1N5401",100],["1N5402",200],["1N5403",300],["1N5404",400],
+                  ["1N5405",500],["1N5406",600],["1N5407",800],["1N5408",1000]];
+const D_SCHOTTKY = [
+  ["1N5817","20 V","1 A","DO-41"],["1N5818","30 V","1 A","DO-41"],["1N5819","40 V","1 A","DO-41"],
+  ["1N5820","20 V","3 A","DO-201AD"],["1N5821","30 V","3 A","DO-201AD"],["1N5822","40 V","3 A","DO-201AD"],
+  ["SS14","40 V","1 A","SMA"],["SS16","60 V","1 A","SMA"],
+  ["SS34","40 V","3 A","SMC"],["SS36","60 V","3 A","SMC"],
+  ["BAT54","30 V","200 mA","SOT-23"],["1N5711","70 V","15 mA","DO-35"]
+];
+const D_SIGNAL = [
+  ["1N4148","100 V","200 mA","DO-35","The switching diode. About 4 ns recovery."],
+  ["1N914","100 V","200 mA","DO-35","The same part, older name."],
+  ["LL4148","100 V","200 mA","MiniMELF","1N4148 in a surface-mount body."],
+  ["BAV99","70 V","200 mA","SOT-23","Two of them in series, centre tap on pin 3."],
+  ["BAT54","30 V","200 mA","SOT-23","Schottky. A, C and S are the pair wirings."],
+  ["BAT85","30 V","200 mA","DO-35","Schottky, through hole."]
+];
+const D_VF = [
+  ["Germanium","0.2 – 0.4 V","Detectors and old radios. Leaks badly and dislikes heat."],
+  ["Schottky, 20 – 40 V","0.3 – 0.5 V","The low-drop rectifier. Leakage is the price."],
+  ["Schottky, 100 – 200 V","0.6 – 0.9 V","Most of the advantage has gone by here."],
+  ["Silicon, small signal","0.6 – 0.75 V","At a few milliamps."],
+  ["Silicon rectifier","0.9 – 1.1 V","At its rated current, not at 1 mA."],
+  ["Fast / ultrafast","1.0 – 1.7 V","The recovery is bought with forward drop."],
+  ["Silicon carbide","1.3 – 1.8 V","No reverse recovery at all, at 600 V and up."]
+];
+function diodeRefHTML(){
+  const pair = (list,head) => `<table><thead><tr><th class="asis">${head}</th><th class="num asis">VRRM</th></tr></thead>
+    <tbody>${list.map(d=>`<tr><td class="m"><b>${d[0]}</b></td><td class="num m">${d[1]} V</td></tr>`).join("")}</tbody></table>`;
+  return `<h2>Standard rectifiers</h2>
+    ${noteHTML([
+      "Two families, and in both the last digit is the reverse voltage. The 1N400x is 1 A in DO-41; the 1N540x is 3 A in DO-201AD.",
+      "1N4007 costs the same as 1N4001 and stands off twenty times the voltage, so there is rarely a reason to stock the lower ones.",
+      "Neither family has a useful recovery time. On anything switching faster than the mains, reach for a fast, ultrafast or Schottky part instead."
+    ])}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:0 22px">
+      ${pair(D_1N400X,"1N400x · 1 A · DO-41")}${pair(D_1N540X,"1N540x · 3 A · DO-201AD")}</div>
+    <h2 style="margin-top:22px">Schottky</h2>
+    ${noteHTML([
+      "Low forward drop and no reverse recovery, because nothing is stored: a Schottky is a majority-carrier device.",
+      "What you pay is reverse leakage, which roughly doubles every 10 °C. In a hot rectifier that leakage heats the junction, which raises the leakage again — check it at the temperature you expect, not at 25 °C.",
+      "The SS numbering reads as current then voltage: SS14 is 1 A at 40 V, SS36 is 3 A at 60 V."
+    ])}
+    <div class="tscroll"><table><thead><tr><th>Part</th><th class="num asis">VRRM</th>
+      <th class="num">Current</th><th class="num">Package</th></tr></thead>
+      <tbody>${D_SCHOTTKY.map(d=>`<tr><td class="m"><b>${d[0]}</b></td><td class="num m">${d[1]}</td>
+        <td class="num m">${d[2]}</td><td class="num m">${d[3]}</td></tr>`).join("")}</tbody></table></div>
+    <h2 style="margin-top:22px">Small signal and switching</h2>
+    ${noteHTML([
+      "The BAT54 suffixes are wiring, not silicon: plain is one diode, A is a common anode, C is a common cathode, and S is two in series with the centre brought out. Buying the wrong letter is the usual mistake.",
+      "BAV99 is the same idea with 1N4148-class silicon instead of Schottky."
+    ])}
+    <div class="tscroll"><table><thead><tr><th>Part</th><th class="num asis">VRRM</th>
+      <th class="num">Current</th><th class="num">Package</th><th>Notes</th></tr></thead>
+      <tbody>${D_SIGNAL.map(d=>`<tr><td class="m"><b>${d[0]}</b></td><td class="num m">${d[1]}</td>
+        <td class="num m">${d[2]}</td><td class="num m">${d[3]}</td><td>${d[4]}</td></tr>`).join("")}</tbody></table></div>
+    <h2 style="margin-top:22px">Forward drop, by type</h2>
+    ${noteHTML([
+      "These are classes of diode rather than parts, and every one of them is quoted at a current: a rectifier that drops 1.0 V at 1 A drops about 0.6 V at 10 mA. Take the figure off the curve at your own current.",
+      "The drop falls about 2 mV per degree as the junction warms, the same as any silicon junction.",
+      "Reverse recovery is the other half of the choice. A standard rectifier takes microseconds, a fast one a few hundred nanoseconds, an ultrafast one tens — and a Schottky none. In a switching converter that time is a short circuit across the rail."
+    ])}
+    <div class="tscroll"><table><thead><tr><th>Type</th><th class="num asis">Vf</th><th>Where</th></tr></thead>
+      <tbody>${D_VF.map(d=>`<tr><td class="m"><b>${d[0]}</b></td><td class="num m">${d[1]}</td>
+        <td>${d[2]}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+/* Package outlines, with the thermal band each one spans. Both figures are
+   classes: theta-JA is the datasheet's own test board in still air, and
+   theta-JC follows the die as much as the package.                        */
+const PKG = [
+  ["SC-70 (SOT-323)","SMD","2.0 × 1.25","300 – 450","—"],
+  ["SOT-23 (TO-236)","SMD","2.9 × 1.3","200 – 350","—"],
+  ["SOT-23-5 / -6","SMD","2.9 × 1.6","190 – 300","—"],
+  ["SOT-89 (TO-243)","SMD","4.5 × 2.5","100 – 160","—"],
+  ["SOT-223 (TO-261)","SMD","6.5 × 3.5","50 – 100","10 – 20"],
+  ["SOIC-8","SMD","4.9 × 3.9","100 – 160","—"],
+  ["SOIC-8, exposed pad","SMD","4.9 × 3.9","40 – 70","3 – 8"],
+  ["DFN / QFN 3 × 3","SMD","3.0 × 3.0","40 – 70","3 – 10"],
+  ["DPAK (TO-252)","SMD","6.5 × 6.1","50 – 100","1.5 – 4"],
+  ["D²PAK (TO-263)","SMD","10.0 × 9.9","35 – 60","0.8 – 2"],
+  ["TOLL (TO-269AA)","SMD","9.9 × 11.7","35 – 50","0.4 – 1"],
+  ["TO-92","through hole","4.6 × 3.7","150 – 250","—"],
+  ["TO-220","through hole","10.2 × 15.9","55 – 70","0.5 – 3"],
+  ["TO-247","through hole","15.9 × 21.0","35 – 45","0.25 – 1"],
+  ["TO-3P","through hole","15.9 × 20.0","35 – 45","0.3 – 1"]
+];
+function packageRefHTML(){
+  return `<h2>Packages and their thermal figures</h2>
+    ${noteHTML([
+      "θJA is the package on the datasheet's own test board, in still air, with nothing bolted to it. Change the copper under it and the number changes with it — which is why the same part is quoted at 60 °C/W by one maker and 100 by another, both honestly.",
+      "θJC is the useful figure once a heatsink is involved, and there the path to add up is θJC + θCS + θSA. Never θJA.",
+      "θJC follows the die as much as the package: a large die in a TO-220 reaches 0.5 °C/W, a small one three or four times that. The band below is what the package spans, not what your part is.",
+      "The dash means the package has no thermal tab worth quoting — for those, θJA and the board are the whole story.",
+      "Half of these outlines carry two names, one from the JEDEC TO- series and one from everyday use, and both are in the first column. A search that finds nothing is often a search for the other one.",
+      "Both columns are ranges over a class of parts. The datasheet in front of you governs."
+    ])}
+    <div class="tscroll"><table><thead><tr><th>Package</th><th class="num">Mounting</th>
+      <th class="num asis">Body mm</th><th class="num asis">θJA °C/W</th>
+      <th class="num asis">θJC °C/W</th></tr></thead>
+      <tbody>${PKG.map(p=>`<tr><td class="m"><b>${p[0]}</b></td><td class="num m">${p[1]}</td>
+        <td class="num m" style="white-space:nowrap">${p[2]}</td><td class="num m">${p[3]}</td>
+        <td class="num m">${p[4]}</td></tr>`).join("")}</tbody></table></div>
+`;
+}
+
+/* Laminates as classes. The specialty figures are the maker's published
+   typical at 10 GHz, and are quoted as that rather than as a property.    */
+const LAMINATE = [
+  ["FR-4, standard","4.2 – 4.7","0.017 – 0.025","130 – 140 °C","The default. Cheap, and everywhere."],
+  ["FR-4, high Tg","4.2 – 4.6","0.015 – 0.022","170 – 180 °C","Lead-free reflow and thick multilayer."],
+  ["Polyimide","3.4 – 4.0","0.008 – 0.020","250 °C +","Flex, and anything that runs hot."],
+  ["Rogers RO4003C","3.38","0.0027","280 °C +","Maker's typical at 10 GHz."],
+  ["Rogers RO4350B","3.48","0.0037","280 °C +","Maker's typical at 10 GHz."],
+  ["PTFE / woven glass","2.1 – 2.6","0.0009 – 0.002","—","Microwave. Awkward to fabricate."],
+  ["Aluminium IMS","—","—","—","A thin dielectric on metal: 1 – 3 W/m·K, single layer."],
+  ["CEM-1","4.2 – 4.8","—","120 °C","Paper core. Single sided, and not through-plated."]
+];
+const CU_OZ = [0.5,1,2,3,4];
+const BOARD_MM = [0.4,0.6,0.8,1.0,1.2,1.6,2.0,2.4];
+const MAT_GROUP = [
+  ["I","600 ≤ CTI","The best tracking resistance."],
+  ["II","400 ≤ CTI < 600",""],
+  ["IIIa","175 ≤ CTI < 400","Most FR-4 sits here or better."],
+  ["IIIb","100 ≤ CTI < 175",""]
+];
+const POLLUTION = [
+  ["1","No pollution, or only dry and non-conductive. Sealed or potted."],
+  ["2","Non-conductive pollution only, with occasional temporary conductivity from condensation. Most indoor equipment."],
+  ["3","Conductive pollution, or dry pollution that condensation turns conductive."],
+  ["4","Continuous conductivity, from conductive dust, rain or snow."]
+];
+function pcbRefHTML(){
+  const cu = CU_OZ.map(o=>`<tr><td class="m"><b>${o} oz</b></td>
+      <td class="num m">${(o*34.8).toFixed(o<1?1:0)} µm</td>
+      <td class="num m">${(o*34.8/25.4).toFixed(2)} mil</td></tr>`).join("");
+  return `<h2>Laminates</h2>
+    ${noteHTML([
+      "Dk is the dielectric constant and Df the loss tangent — the first sets impedance and propagation delay, the second sets how much of the signal the board eats.",
+      "FR-4 is not one material. Dk moves with the glass-to-resin ratio, with the weave, and with frequency, falling perhaps 0.3 between 1 MHz and 1 GHz. Below a few hundred megahertz that hardly matters; above it, ask the fabricator which laminate you are actually getting.",
+      "Tg is where the resin softens. It matters at reflow, and it matters more the thicker the board and the more layers it has.",
+      "The specialty figures are the maker's published typical at 10 GHz, quoted as that rather than as a property of the class."
+    ])}
+    <div class="tscroll"><table><thead><tr><th>Laminate</th><th class="num asis">Dk</th>
+      <th class="num asis">Df</th><th class="num asis">Tg</th><th>Character</th></tr></thead>
+      <tbody>${LAMINATE.map(l=>`<tr><td class="m"><b>${l[0]}</b></td><td class="num m">${l[1]}</td>
+        <td class="num m">${l[2]}</td><td class="num m">${l[3]}</td><td>${l[4]}</td></tr>`).join("")}</tbody></table></div>
+    <h2 style="margin-top:22px">Copper and thickness</h2>
+    ${noteHTML([
+      "Copper is sold by weight per square foot, and one ounce spreads to about 35 µm. The trace calculator wants this figure.",
+      "Finished board thickness comes from its own short list; 1.6 mm is the default because it is 0.062 inches, and that is what everything was built around."
+    ])}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 22px">
+      <table><thead><tr><th>Weight</th><th class="num asis">Thickness</th><th class="num asis">mil</th></tr></thead>
+        <tbody>${cu}</tbody></table>
+      <table><thead><tr><th class="num asis">Board thickness</th></tr></thead>
+        <tbody>${BOARD_MM.map(t=>`<tr><td class="num m"><b>${t.toFixed(1)} mm</b>${t===1.6?'<span style="color:var(--ink3)">  · default</span>':""}</td></tr>`).join("")}</tbody></table></div>
+    <h2 style="margin-top:22px">Clearance and creepage</h2>
+    ${noteHTML([
+      "Clearance is the shortest distance through the air. Creepage is the shortest distance along the surface. They are different numbers, and the larger of the two is the one that sizes the gap.",
+      "Clearance is set by the peak voltage and by altitude, because it is air breaking down. Creepage is set by the RMS working voltage, by the pollution degree and by the material group, because it is the surface slowly tracking.",
+      "So four things decide it: working voltage, whether the conductor is internal or external, whether it is coated, and how dirty the air is. Those are what the tables in IPC-2221B and IEC 60664-1 are indexed by — and a slot milled through the board resets creepage without changing anything else.",
+      "This page does not reproduce those millimetres. They are a safety table, they differ between the standards, and a figure remembered wrongly here would be believed on a mains board. Read them from IPC-2221B Table 6-1, or from IEC 60664-1 Tables F.2 and F.4.",
+      "What is below is the two indexes those tables use, so you know which row you are in before you open them."
+    ])}
+    <div class="tscroll"><table><thead><tr><th class="num">Material group</th>
+      <th class="num asis">CTI</th><th>Meaning</th></tr></thead>
+      <tbody>${MAT_GROUP.map(m=>`<tr><td class="num m"><b>${m[0]}</b></td><td class="num m">${m[1]}</td>
+        <td>${m[2]}</td></tr>`).join("")}</tbody></table></div>
+    <div class="tscroll"><table style="margin-top:14px"><thead><tr><th class="num">Pollution degree</th>
+      <th>What it means</th></tr></thead>
+      <tbody>${POLLUTION.map(p=>`<tr><td class="num m"><b>${p[0]}</b></td><td>${p[1]}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+const CELLS = [
+  ["Alkaline","1.5 V","1.6 V","0.9 V","no","LR6, LR03. The default primary cell."],
+  ["Zinc-carbon","1.5 V","1.6 V","0.9 V","no","Cheaper, and worse under load."],
+  ["Lithium primary, FR6","1.5 V","1.8 V","1.0 V","no","Light, cold-tolerant, long shelf life."],
+  ["Lithium coin, CR","3.0 V","3.0 V","2.0 V","no","Manganese dioxide. CR2032 and its family."],
+  ["Lithium thionyl, LiSOCl₂","3.6 V","3.67 V","2.5 V","no","Years on a shelf. Very low self-discharge."],
+  ["NiMH","1.2 V","1.4 V","1.0 V","yes","Drops in where alkaline was, at 0.3 V less."],
+  ["NiCd","1.2 V","1.4 V","1.0 V","yes","Largely displaced by NiMH."],
+  ["Li-ion / LiPo","3.6 – 3.7 V","4.2 V","3.0 V","yes","A 40 % swing across the discharge."],
+  ["LiFePO₄","3.2 V","3.65 V","2.5 V","yes","Flat curve, long cycle life, safer chemistry."],
+  ["Lead-acid, per cell","2.0 V","2.4 V","1.75 V","yes","Six of them make the 12 V that floats at 13.8."]
+];
+const CELL_SIZES = [
+  ["CR1220","12 × 2.0 mm","35 – 40 mAh"],["CR2016","20 × 1.6 mm","85 – 90 mAh"],
+  ["CR2025","20 × 2.5 mm","150 – 165 mAh"],["CR2032","20 × 3.2 mm","210 – 240 mAh"],
+  ["CR2450","24 × 5.0 mm","600 – 620 mAh"],["14500","14 × 50 mm","700 – 900 mAh"],
+  ["18650","18 × 65 mm","2 000 – 3 500 mAh"],["21700","21 × 70 mm","4 000 – 5 000 mAh"],
+  ["26650","26 × 65 mm","3 000 – 5 000 mAh"]
+];
+function batteryRefHTML(){
+  return `<h2>Cell voltages</h2>
+    ${noteHTML([
+      "The nominal voltage is a label. What the circuit sees is the range beside it, and the regulator, the brown-out threshold and the ADC reference all have to survive the whole of it.",
+      "An alkaline cell leaves the shop at 1.6 V and is flat at 0.9 — a 44 % fall. A Li-ion runs 4.2 down to 3.0. Design for the empty end and check the full one.",
+      "LiFePO₄ is the exception that costs you something: the curve is so flat that voltage tells you almost nothing about how much is left, and state of charge has to be counted rather than measured.",
+      "Series cells do not stay matched. Anything lithium in series needs balancing and protection, and that is not optional."
+    ])}
+    <div class="tscroll"><table><thead><tr><th>Chemistry</th><th class="num">Nominal</th>
+      <th class="num">Full</th><th class="num">Empty</th><th class="num">Rechargeable</th>
+      <th>Notes</th></tr></thead>
+      <tbody>${CELLS.map(c=>`<tr><td class="m"><b>${c[0]}</b></td><td class="num m">${c[1]}</td>
+        <td class="num m">${c[2]}</td><td class="num m">${c[3]}</td><td class="num m">${c[4]}</td>
+        <td>${c[5]}</td></tr>`).join("")}</tbody></table></div>
+    <h2 style="margin-top:22px">The number is the size</h2>
+    ${noteHTML([
+      "A coin cell's digits are its dimensions in tenths of a millimetre: CR2032 is 20 mm across and 3.2 mm thick. The letters come first — C is lithium manganese dioxide, R is round.",
+      "Cylindrical lithium cells read the same way in whole millimetres: 18650 is 18 mm across and 65.0 mm long, and 21700 is 21 by 70.",
+      "So CR2032 and CR2016 are the same footprint and half the height, and half the capacity with it. They are not interchangeable in a holder."
+    ])}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:0 22px">
+      <table><thead><tr><th>Cell</th><th class="num asis">Size</th><th class="num">Typical</th></tr></thead>
+        <tbody>${CELL_SIZES.slice(0,5).map(c=>`<tr><td class="m"><b>${c[0]}</b></td>
+          <td class="num m" style="white-space:nowrap">${c[1]}</td><td class="num m">${c[2]}</td></tr>`).join("")}</tbody></table>
+      <table><thead><tr><th>Cell</th><th class="num asis">Size</th><th class="num">Typical</th></tr></thead>
+        <tbody>${CELL_SIZES.slice(5).map(c=>`<tr><td class="m"><b>${c[0]}</b></td>
+          <td class="num m" style="white-space:nowrap">${c[1]}</td><td class="num m">${c[2]}</td></tr>`).join("")}</tbody></table></div>
+    <h2 style="margin-top:22px">What the capacity figure means</h2>
+    ${noteHTML([
+      "A milliamp-hour figure is quoted at one discharge current, to one cut-off voltage, at one temperature. Draw more and you get less — noticeably less, not proportionally less.",
+      "Internal resistance is what does it, and it is also what limits the pulse. A CR2032 sits somewhere around 10 to 40 Ω, rising as it ages and as it cools, so a radio that needs 20 mA for a moment has to take it from a capacitor across the cell rather than from the cell.",
+      "Cold does the same thing twice over: less capacity, and more resistance while you take it.",
+      "The capacities above are the range the common brands publish, not a promise about any one cell."
+    ])}`;
+}
+
+/* Every reference table, gathered. The calculators point here rather than
+   each carrying its own copy, so there is one place to look.              */
+const TABLES = [
+  {id:"eseries",  g:"Passives",      nav:"E series",            title:"Resistor standard values",     html:eseriesTableHTML},
+  {id:"chip",     g:"Passives",      nav:"Chip resistor sizes", title:"Chip resistor sizes",          html:smdSizeTableHTML},
+  {id:"ceramic",  g:"Passives",      nav:"Ceramic capacitors",  title:"Ceramic capacitors",           html:capValueTableHTML},
+  {id:"elec",     g:"Passives",      nav:"Electrolytics",       title:"Electrolytic capacitors",      html:capElectrolyticHTML},
+  {id:"inductors",g:"Passives",      nav:"Inductors & cores",   title:"Inductors and core materials", html:inductorRefHTML},
+  {id:"diodes",   g:"Semiconductors",nav:"Diodes",              title:"Diodes",                       html:diodeRefHTML},
+  {id:"zeners",   g:"Semiconductors",nav:"Zener voltages",      title:"Zener voltages",               html:zenerTableHTML},
+  {id:"leds",     g:"Semiconductors",nav:"LED forward voltage", title:"LED forward voltage",          html:ledVfTableHTML},
+  {id:"tvs",      g:"Semiconductors",nav:"TVS / surge",         title:"TVS and surge protection",     html:tvsRefHTML},
+  {id:"packages", g:"Semiconductors",nav:"Packages & θJA",      title:"Packages and thermal figures", html:packageRefHTML},
+  {id:"pcb",      g:"Board",         nav:"PCB & spacing",       title:"PCB materials and spacing",    html:pcbRefHTML},
+  {id:"awg",      g:"Board",         nav:"American wire gauge", title:"American wire gauge",          html:awgTableHTML},
+  {id:"batteries",g:"Sources",       nav:"Batteries",           title:"Batteries",                    html:batteryRefHTML}
+];
+const tableById = id => TABLES.find(t=>t.id===id);
+
+function viewTables(){
+  const t = tableById(ui.tableAt) || TABLES[0];
+  return `<div class="panel">${t.html()}</div>`;
+}
+
 const NEW_CALCS = [
 
 {id:"rcolor", group:"Components", name:"Resistor colour code",
@@ -1594,6 +2323,7 @@ const NEW_CALCS = [
          FS("tol","Tolerance",TOL_ORDER,"gold"),
          FS("tc","Temp. coefficient (6 band)",TC_ORDER,"none"),
          FT("val","Or type a value instead","10k")],
+ tbl:"eseries",
  run(v){
    const n = parseInt(v.n,10);
    if(v.val){
@@ -1610,7 +2340,8 @@ const NEW_CALCS = [
    const mant = d.reduce((a,c)=>a*10 + DIGITS.indexOf(c), 0);
    const val  = mant * MULTS[v.mul];
    const tol  = TOLS[v.tol];
-   const out = [RP("Value",val,"\u03a9"),R("Tolerance","\u00b1"+tol,"%"),
+   const out = [RP("Value",val,"\u03a9","the digit bands read as a number, times the multiplier band"),
+                R("Tolerance","\u00b1"+tol,"%"),
                 R("Lowest",val*(1-tol/100),"\u03a9"),R("Highest",val*(1+tol/100),"\u03a9")];
    if(n===6 && TCS[v.tc]) out.push(R("Temp. coefficient",TCS[v.tc],"ppm/K"));
    const e = nearestE24(val);
@@ -1621,6 +2352,7 @@ const NEW_CALCS = [
 {id:"smd", group:"Components", name:"SMD resistor code",
  note:["Type the marking on the part, or a value to get every marking it could carry."],
  fields:[FT("code","Marking","103  1002  4R7  01A"), FT("val","Or a value","10k")],
+ tbl:"chip",
  run(v){
    if(v.code){
      const d = decodeSMD(v.code);
@@ -1652,10 +2384,11 @@ const NEW_CALCS = [
    const u = cap ? "F" : v.type==="Inductors" ? "H" : "\u03a9";
    const series   = cap ? 1/inv : sum;
    const parallel = cap ? sum : 1/inv;
-   const out = [R("In series",series,u),R("In parallel",parallel,u),
+   const out = [R("In series",series,u, cap ? "1 \u00f7 \u03a3(1 \u00f7 C) \u2014 capacitors in series add as reciprocals" : "\u03a3 of the values"),
+                R("In parallel",parallel,u, cap ? "\u03a3 of the values" : "1 \u00f7 \u03a3(1 \u00f7 x)"),
                 R("Parts",xs.length,""),
                 R("Largest",Math.max.apply(null,xs),u),R("Smallest",Math.min.apply(null,xs),u)];
-   if(!cap && xs.length===2) out.push(R("Divider ratio", xs[1]/(xs[0]+xs[1]), "\u00d7","if these two form a divider"));
+   if(!cap && xs.length===2) out.push(R("Divider ratio", xs[1]/(xs[0]+xs[1]), "\u00d7","second \u00f7 (first + second) \u2014 if these two form a divider"));
    return out;
  }},
 
@@ -1668,17 +2401,17 @@ const NEW_CALCS = [
    if(!isFinite(f) || f<=0) return null;
    const out = [];
    let xc = null, xl = null;
-   if(isFinite(C) && C>0){ xc = 1/(2*Math.PI*f*C); out.push(R("Xc",xc,"\u03a9","capacitor")); }
-   if(isFinite(L) && L>0){ xl = 2*Math.PI*f*L;     out.push(R("XL",xl,"\u03a9","inductor")); }
+   if(isFinite(C) && C>0){ xc = 1/(2*Math.PI*f*C); out.push(R("Xc",xc,"\u03a9","1 \u00f7 (2\u03c0fC)")); }
+   if(isFinite(L) && L>0){ xl = 2*Math.PI*f*L;     out.push(R("XL",xl,"\u03a9","2\u03c0fL")); }
    if(xc!==null && xl!==null){
      const x = xl - xc;
-     out.push(R("Net reactance",x,"\u03a9", x>0?"inductive":"capacitive"));
+     out.push(R("Net reactance",x,"\u03a9", "XL \u2212 Xc \u2014 "+(x>0?"inductive":"capacitive")));
      const r = isFinite(Rs)&&Rs>0 ? Rs : 0;
-     out.push(R("Impedance",Math.sqrt(r*r + x*x),"\u03a9"));
-     out.push(R("Phase",Math.atan2(x, r||1e-12)*180/Math.PI,"\u00b0","voltage against current"));
-     out.push(R("Resonates at",1/(2*Math.PI*Math.sqrt(L*C)),"Hz"));
+     out.push(R("Impedance",Math.sqrt(r*r + x*x),"\u03a9","\u221a(R\u00b2 + X\u00b2)"));
+     out.push(R("Phase",Math.atan2(x, r||1e-12)*180/Math.PI,"\u00b0","arctan(X \u00f7 R) \u2014 voltage against current"));
+     out.push(R("Resonates at",1/(2*Math.PI*Math.sqrt(L*C)),"Hz","1 \u00f7 (2\u03c0\u221a(LC))"));
    } else if(xc!==null && isFinite(Rs) && Rs>0){
-     out.push(R("Impedance",Math.sqrt(Rs*Rs+xc*xc),"\u03a9"));
+     out.push(R("Impedance",Math.sqrt(Rs*Rs+xc*xc),"\u03a9","\u221a(R\u00b2 + Xc\u00b2)"));
    }
    return out.length?out:null;
  }},
@@ -1687,6 +2420,7 @@ const NEW_CALCS = [
  note:["Rs feeds both the zener and the load. The zener has to swallow whatever the load does not take."],
  fields:[F("Vin","Input","V","12"),F("Vz","Zener voltage","V","5.1"),F("Rs","Series resistor","Ω","220"),
          F("Il","Load current","A","10m"),F("Pz","Zener power rating","W","0.5")],
+ tbl:"zeners",
  run(v){
    const {Vin,Vz,Rs,Il,Pz} = v;
    if(!isFinite(Vin)||!isFinite(Vz)) return null;
@@ -1695,23 +2429,23 @@ const NEW_CALCS = [
      if(!isFinite(Il)) return null;
      /* size Rs so the zener still gets a holding current of 5 mA at full load */
      const r = (Vin-Vz)/(Il+0.005), e = nearestE24(r);
-     return [R("Rs needed",r,"\u03a9","keeps 5 mA in the zener at full load"),
-             RP("Nearest E24",e,"\u03a9"),R("Total current",(Vin-Vz)/e,"A"),
-             R("Dissipation in Rs",(Vin-Vz)*(Vin-Vz)/e,"W")];
+     return [R("Rs needed",r,"\u03a9","(Vin \u2212 Vz) \u00f7 (load + 5 mA) \u2014 keeps 5 mA in the zener at full load"),
+             RP("Nearest E24",e,"\u03a9"),R("Total current",(Vin-Vz)/e,"A","(Vin \u2212 Vz) \u00f7 Rs"),
+             R("Dissipation in Rs",(Vin-Vz)*(Vin-Vz)/e,"W","(Vin \u2212 Vz)\u00b2 \u00f7 Rs")];
    }
    const It = (Vin-Vz)/Rs;
    const il = isFinite(Il) ? Il : 0;
    const iz = It - il;
    const pz = iz*Vz, prs = It*It*Rs;
-   const out = [R("Total current through Rs",It,"A"),
-                R("Current in the zener",iz,"A", iz<0.005 ? "below 5 mA, regulation gets loose" : ""),
-                R("Zener dissipation",pz,"W"),
-                R("Rs dissipation",prs,"W","pick a resistor rated at least twice this"),
-                R("Efficiency",100*Vz*il/(Vin*It),"%")];
+   const out = [R("Total current through Rs",It,"A","(Vin \u2212 Vz) \u00f7 Rs \u2014 fixed by Rs, whatever the load does"),
+                R("Current in the zener",iz,"A", "total \u2212 load: the zener swallows what the load leaves"+(iz<0.005 ? ", and below 5 mA regulation gets loose" : "")),
+                R("Zener dissipation",pz,"W","Vz \u00d7 the zener current"),
+                R("Rs dissipation",prs,"W","I\u00b2 \u00d7 Rs \u2014 pick a resistor rated at least twice this"),
+                R("Efficiency",100*Vz*il/(Vin*It),"%","Vz \u00d7 load current \u00f7 (Vin \u00d7 total current) \u00d7 100")];
    if(iz<0) out.push(R("Warning",null,"","the load takes more than Rs delivers \u2014 the output will sag below "+siFmt(Vz,"V")));
    if(isFinite(Pz)){
-     out.push(R("Zener rating used",100*pz/Pz,"%", pz>Pz?"over the rating":""));
-     out.push(R("Worst case, no load",(Vin-Vz)/Rs*Vz,"W","what the zener sees if the load disconnects"));
+     out.push(R("Zener rating used",100*pz/Pz,"%", "zener dissipation \u00f7 the rating \u00d7 100"+(pz>Pz?" \u2014 over the rating":"")));
+     out.push(R("Worst case, no load",(Vin-Vz)/Rs*Vz,"W","Vz \u00d7 (Vin \u2212 Vz) \u00f7 Rs \u2014 what the zener sees if the load disconnects"));
    }
    return out;
  }},
@@ -1733,18 +2467,19 @@ const NEW_CALCS = [
    const srSine=Math.PI*f*Vpp/1e6;
    const srStep=isFinite(tr)&&tr>0 ? 0.8*Vpp/tr/1e6 : 0;
    const srNeed=Math.max(srSine,srStep);
-   const out=[R("Required closed-loop bandwidth",closedLoopBW,"Hz",margin+"× above the highest sine frequency"),
+   const out=[R("Required closed-loop bandwidth",closedLoopBW,"Hz","highest sine frequency \u00d7 margin, "+margin+"× above it"),
               R("GBW needed for sine response",gbwSine,"Hz","closed-loop noise gain × bandwidth"),
               R("GBW needed for step response",gbwStep,"Hz",isFinite(stepBW)?"from 0.35 ÷ rise time":"no rise-time target entered"),
-              R("Recommended GBW",gbwNeed,"Hz"),R("Sine slew rate needed",srSine,"V/µs","π × frequency × output Vpp"),
+              R("Recommended GBW",gbwNeed,"Hz","the larger of the two above"),
+              R("Sine slew rate needed",srSine,"V/µs","π × frequency × output Vpp"),
               R("Step slew rate needed",srStep,"V/µs",isFinite(tr)&&tr>0?"0.8 × Vpp ÷ 10–90 % rise time":"no rise-time target entered"),
-              R("Required slew rate",srNeed,"V/µs")];
+              R("Required slew rate",srNeed,"V/µs","the larger of the two above")];
    const gbwOK=!isFinite(gbw)||gbw<=0 || gbw>=gbwNeed;
    const srOK=!isFinite(sr)||sr<=0 || sr>=srNeed;
-   if(isFinite(gbw)&&gbw>0) out.push(R("Candidate closed-loop bandwidth",gbw/gain,"Hz"),
-                                      R("GBW margin",gbw/gbwNeed,"×",gbwOK?"meets the entered target":"below the entered target"));
-   if(isFinite(sr)&&sr>0) out.push(R("Candidate full-power bandwidth",sr*1e6/(Math.PI*Vpp),"Hz"),
-                                    R("Slew-rate margin",sr/srNeed,"×",srOK?"meets the calculated limit":"slew-rate limited"));
+   if(isFinite(gbw)&&gbw>0) out.push(R("Candidate closed-loop bandwidth",gbw/gain,"Hz","the part's GBW ÷ the noise gain"),
+                                      R("GBW margin",gbw/gbwNeed,"×","the part's GBW ÷ what is needed — "+(gbwOK?"meets the entered target":"below the entered target")));
+   if(isFinite(sr)&&sr>0) out.push(R("Candidate full-power bandwidth",sr*1e6/(Math.PI*Vpp),"Hz","slew rate ÷ (π × Vpp) — above this the output cannot keep up at full swing"),
+                                    R("Slew-rate margin",sr/srNeed,"×","the part's slew rate ÷ what is needed — "+(srOK?"meets the calculated limit":"slew-rate limited")));
    if((isFinite(gbw)&&gbw>0)||(isFinite(sr)&&sr>0))
      out.push(R("Speed verdict",null,"",(gbwOK&&srOK)?"candidate meets both bandwidth and slew-rate targets":"candidate does not meet all entered speed targets"));
    return out;
@@ -1895,16 +2630,15 @@ function awgTableHTML(){
       <td class="num m">${siFmt(awgOhmPerM(n),"Ω")}</td></tr>`;
   const half = Math.ceil(rows.length/2);
   const table = list => `<table style="width:100%"><thead><tr><th>AWG</th>
-      <th class="num">⌀ mm</th><th class="num">mm²</th><th class="num">Ω/m</th></tr></thead>
+      <th class="num asis">⌀ mm</th><th class="num asis">mm²</th><th class="num asis">Ω/m</th></tr></thead>
       <tbody>${list.map(cell).join("")}</tbody></table>`;
   return `<h2>American wire gauge</h2>
-    <p>Diameter and section from the defining series — a gauge is quoted by both, and they are easy to
-       confuse: <b>AWG 24</b> is <b>0.511 mm</b> across and <b>0.205 mm²</b> in section. Ω/m is solid
-       copper at 20 °C; a run of cable is twice its length, out and back.</p>
-    <p style="color:var(--ink3);font-size:12px">No current rating is given. That depends on the
-       insulation, on whether the cable is bundled or in free air, and on the ambient — a single number
-       here would be believed and would sometimes be wrong.</p>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0 22px;margin-top:10px">
+    ${noteHTML([
+      "Diameter and section from the defining series. A gauge is quoted by both, and they are easy to confuse: AWG 24 is 0.511 mm across and 0.205 mm² in section.",
+      "Ω/m is solid copper at 20 °C. A run of cable is twice its length, out and back.",
+      "No current rating is given. That depends on the insulation, on whether the cable is bundled or in free air, and on the ambient — a single number here would be believed and would sometimes be wrong."
+    ])}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0 22px">
       ${table(rows.slice(0,half))}${table(rows.slice(half))}</div>`;
 }
 function awgFor(areaMM2){
@@ -1933,16 +2667,16 @@ const WIRE_CALCS = [
    const rho = RHO[mat] || RHO["Copper, pure"];
    const Rw = rho*L/A;                             /* not R - that is the row builder */
    const wrong = L/D*rho;                          /* the formula going round the internet */
-   const out = [R("Cross section",A,"mm\u00b2"),
-                R("Resistance",Rw,"\u03a9"),
-                R("Per metre",Rw/L,"\u03a9","\u03a9/m"),
-                R("Mass",(DENS[mat]||8.96)*A*L/1000,"kg","the whole length"),
+   const out = [R("Cross section",A,"mm\u00b2","\u03c0D\u00b2 \u00f7 4 \u2014 the area, which is what carries the current"),
+                R("Resistance",Rw,"\u03a9","\u03c1L \u00f7 A"),
+                R("Per metre",Rw/L,"\u03a9","resistance \u00f7 length, in \u03a9/m"),
+                R("Mass",(DENS[mat]||8.96)*A*L/1000,"kg","density \u00d7 area \u00d7 length \u2014 the whole run"),
                 R("Nearest AWG",null,"", awgDesc(awgFor(A))),
                 R("The (L/D) \u00d7 \u03c1 formula gives",wrong,"\u03a9",
                   "wrong by "+(Rw/wrong).toFixed(2)+"\u00d7 \u2014 it treats a diameter as an area")];
    if(isFinite(Rm) && Rm>0){
      const ratio = Rm/Rw;
-     out.push(R("Measured \u00f7 expected",ratio,"\u00d7"));
+     out.push(R("Measured \u00f7 expected",ratio,"\u00d7","what you measured, over \u03c1L \u00f7 A"));
      out.push(R("Verdict",null,"",
        ratio < 1.12 ? "consistent with solid copper"
        : ratio < 1.35 ? "high \u2014 check the length and the diameter before blaming the metal"
@@ -1958,7 +2692,7 @@ const WIRE_CALCS = [
   "Conductor temperature is asked for rather than assumed. Copper gains about 0.39 % per degree, so a loaded cable drops more than a cold one.",
   "How hot it actually gets depends on the insulation, on whether the run is bundled or in free air, and on the ambient \u2013 which is why that is yours to say. The watts per metre below are what has to escape."
  ],
- ref: awgTableHTML,
+ tbl:"awg",
  fields:[F("I","Current","A","32"),F("L","One way length","m","15"),F("V","System voltage","V","230"),
          F("drop","Allowed drop","%","3"),F("A","Or a cross section you already have","mm²",""),
          F("T","Conductor temperature","°C","70")],
@@ -1981,7 +2715,7 @@ const WIRE_CALCS = [
      const n = awgFor(need);
      out.push(R("Allowed drop",vd,"V",drop+" % of "+siFmt(V,"V")),
               R("Voltage at the load",V-vd,"V","if the cable is sized exactly to that"),
-              R("Cross section needed",need,"mm\u00b2","for "+drop+" % at "+siFmt(V,"V")+
+              R("Cross section needed",need,"mm\u00b2","2\u03c1(T) \u00d7 L \u00d7 I \u00f7 allowed drop, the 2 for out and back \u2014 for "+drop+" % at "+siFmt(V,"V")+
                 (Math.abs(Tc-20)>=1 ? ", conductor at "+siFmt(Tc,"")+" \u00b0C" : "")),
               R("Nearest AWG",null,"", awgDesc(n)),
               R("Next metric size",null,"", [1,1.5,2.5,4,6,10,16,25,35,50,70,95].find(x=>x>=need)+" mm\u00b2"));
@@ -1991,21 +2725,21 @@ const WIRE_CALCS = [
      /* the drop is what the cable takes; the load only ever sees what is
         left, and that is the number the thing on the end has to work on  */
      const RwH = Rw*kT, vdH = RwH*I;
-     out.push(R("Loop resistance",Rw,"\u03a9","at 20 \u00b0C"),
-              R("Drop at this current",vd,"V","cold"),
-              R("Drop",isFinite(V)?100*vd/V:null,"%", isFinite(V)&&100*vd/V>3?"over the usual 3 % limit":""));
+     out.push(R("Loop resistance",Rw,"\u03a9","2\u03c1L \u00f7 A at 20 \u00b0C \u2014 the 2 is out and back"),
+              R("Drop at this current",vd,"V","loop resistance \u00d7 I, cold"),
+              R("Drop",isFinite(V)?100*vd/V:null,"%", "drop \u00f7 supply \u00d7 100"+(isFinite(V)&&100*vd/V>3?" \u2014 over the usual 3 % limit":"")));
      if(isFinite(V)) out.push(R("Voltage at the load",V-vd,"V",
        V-vd<=0 ? "the cable eats the whole supply \u2014 the run is far too thin"
                : "what the load actually receives with this cable fitted"));
      /* at 20 \u00b0C the warm figures are the cold ones again - saying them twice
         just buries the rows that differ                                    */
      if(Math.abs(Tc-20) >= 1){
-       out.push(R("Loop resistance at "+siFmt(Tc,"")+" \u00b0C",RwH,"\u03a9","copper climbs about 0.39 % per degree"),
+       out.push(R("Loop resistance at "+siFmt(Tc,"")+" \u00b0C",RwH,"\u03a9","the 20 \u00b0C value \u00d7 (1 + 0.00393 \u00d7 (T \u2212 20)) \u2014 copper climbs about 0.39 % per degree"),
                 R("Drop when warm",vdH,"V","the case that matters \u2014 a loaded cable is not at 20 \u00b0C"));
        if(isFinite(V)) out.push(R("Voltage at the load when warm",V-vdH,"V"));
      }
-     out.push(R("Heat in the cable",vdH*I,"W","at "+siFmt(Tc,"")+" \u00b0C"),
-              R("Heat per metre",vdH*I/(2*L),"W","both legs counted \u2014 this is what has to escape"));
+     out.push(R("Heat in the cable",vdH*I,"W","warm drop \u00d7 I, at "+siFmt(Tc,"")+" \u00b0C"),
+              R("Heat per metre",vdH*I/(2*L),"W","heat \u00f7 (2 \u00d7 length) \u2014 both legs counted; this is what has to escape"));
    }
    return out.length?out:null;
  }}
@@ -2051,6 +2785,7 @@ const POWER_CALCS = [
          F("Vdsmax","Device VDS max (optional)","V",""),F("Idmax","Device ID max (optional)","A",""),
          F("Vgsq","Datasheet figures quoted at VGS","V",""),
          F("khot","Rds(on) hot ÷ cold, from the datasheet curve","×","1.4")],
+ tbl:"packages",
  run(v){
     const {Vds,Id,D,f,Rds,tsw,Qg,Vg,Rja,Ta,Qgd,Vplateau,Rg,Rdrv,Rgi,Vdsmax,Idmax,Vgsq,khot} = v;
     /* A P-channel part is this arithmetic with every sign reversed, so the
@@ -2074,11 +2809,11 @@ const POWER_CALCS = [
        a page full of neat wattages would otherwise hide.               */
     if(isFinite(Vdsmax)&&Vdsmax>0&&isFinite(aVds)){
       if(aVds>Vdsmax) out.push(R("Over the drain rating",null,"","the switched voltage is "+siFmt(aVds,"V")+" and the device is rated "+siFmt(Vdsmax,"V")+" – it will avalanche"));
-      else out.push(R("Drain-source margin",aVds/Vdsmax*100,"%","of the "+siFmt(Vdsmax,"V")+" rating; leave room for the spike the layout adds at turn-off"));
+      else out.push(R("Drain-source margin",aVds/Vdsmax*100,"%","switched voltage \u00f7 rating \u00d7 100, of the "+siFmt(Vdsmax,"V")+" rating; leave room for the spike the layout adds at turn-off"));
     }
     if(isFinite(Idmax)&&Idmax>0&&isFinite(aId)){
       if(aId>Idmax) out.push(R("Over the current rating",null,"","the drain current is "+siFmt(aId,"A")+" and the device is rated "+siFmt(Idmax,"A")));
-      else out.push(R("Drain current margin",aId/Idmax*100,"%","of the "+siFmt(Idmax,"A")+" rating, itself quoted at a case temperature you will not have"));
+      else out.push(R("Drain current margin",aId/Idmax*100,"%","drain current \u00f7 rating \u00d7 100, of the "+siFmt(Idmax,"A")+" rating, itself quoted at a case temperature you will not have"));
     }
     /* Rds(on), Qg and QGD are all quoted at one gate voltage. Driving the
        part somewhere else changes every one of them, and not by a factor
@@ -2110,8 +2845,8 @@ const POWER_CALCS = [
       out.push(R("Total gate resistance",rGate,"Ω", isFinite(Rgi)
                  ? "external resistor + driver + the MOSFET's own"
                  : "external resistor + driver only – no internal gate resistance entered, and many datasheets never publish one, so the transition times below are optimistic"),
-              R("Peak gate current",iPeak,"A","at the beginning of the gate-charge pulse"),
-              R("Miller plateau current",iMiller,"A","sets the drain-voltage transition speed"),
+              R("Peak gate current",iPeak,"A","drive voltage ÷ total gate resistance — at the beginning of the gate-charge pulse"),
+              R("Miller plateau current",iMiller,"A","(drive − plateau voltage) ÷ total gate resistance — this is what sets the drain-voltage transition speed"),
               R("Estimated Miller time",tMiller,"s","QGD ÷ Miller plateau current"),
               R("Estimated rise + fall time",tEstimated,"s","two Miller transitions"));
      if(!dc && isFinite(Vds)&&isFinite(Id)&&isFinite(f))
@@ -2150,27 +2885,197 @@ const POWER_CALCS = [
    return out;
  }},
 
-{id:"heatsink", group:"Power", name:"Heatsink selection",
- note:["The thermal path is a series of resistances: junction to case, case to sink, sink to air. Only the last one is yours to choose."],
- fields:[F("Pd","Dissipation","W","4.35"),F("Tj","Junction limit","°C","125"),
-         F("Ta","Ambient","°C","40"),F("Rjc","θJC","°C/W","3"),
-         F("Rcs","θCS pad or grease","°C/W","0.5"),F("Rsa","θSA of a sink you have","°C/W","")],
+{id:"sync", group:"Power", name:"Synchronous buck / boost losses",
+ note:[
+  "Uses the ideal duty cycle to split the inductor RMS current between the two MOSFETs, then adds conduction, gate-drive, hard-switching and body-diode dead-time losses.",
+  "The switching-loss estimate is assigned to the hard-switched device: high side in a buck, low side in a boost. It is a first-pass overlap estimate; ringing, COSS, reverse recovery and gate timing still need measured waveforms.",
+  "Enter hot RDS(on) values, or include their temperature multiplier yourself. The junction estimates use the entered thermal paths independently for both MOSFETs and the inductor."
+ ],
+ fields:[FS("topo","Topology",["Synchronous buck","Synchronous boost"],"Synchronous buck"),
+         F("Vin","Input voltage","V","24"),F("Vout","Output voltage","V","5"),F("Iout","Output current","A","5"),
+         F("fs","Switching frequency","Hz","500k"),F("L","Inductor","H","10u"),F("DCR","Inductor DCR","Ω","20m"),
+         F("Rhs","High-side MOSFET RDS(on)","Ω","10m"),F("Rls","Low-side MOSFET RDS(on)","Ω","10m"),
+         F("tr","Hard-switch rise time","s","20n"),F("tf","Hard-switch fall time","s","20n"),
+         F("QgH","High-side total gate charge","C","20n"),F("QgL","Low-side total gate charge","C","20n"),F("Vdrv","Gate-drive voltage","V","10"),
+         F("tdead","Dead time per edge","s","30n"),F("Vfbody","Body-diode forward drop","V","0.9"),
+         F("RthH","High-side thermal path θJA","°C/W","35"),F("RthL","Low-side thermal path θJA","°C/W","35"),
+         F("RthInd","Inductor thermal resistance","°C/W","25"),F("Ta","Ambient","°C","40")],
+ tbl:"packages",
  run(v){
-   const {Pd,Tj,Ta,Rjc,Rcs,Rsa} = v;
-   if(!isFinite(Pd)||!isFinite(Tj)||!isFinite(Ta)||Pd<=0) return null;
-   const budget = (Tj-Ta)/Pd;
-   const need = budget - (isFinite(Rjc)?Rjc:0) - (isFinite(Rcs)?Rcs:0);
-   const out = [R("Total \u03b8 budget",budget,"\u00b0C/W","(Tj \u2212 Ta) \u00f7 Pd"),
-                R("Heatsink must be under",need,"\u00b0C/W",
-                  need<=0?"no heatsink can do it \u2014 spread the heat or cut the dissipation":
-                  need<1?"forced air territory":need<5?"a real extruded sink":"a small clip-on sink is enough")];
-   if(isFinite(Rsa)){
-     const tj = Ta + Pd*((isFinite(Rjc)?Rjc:0)+(isFinite(Rcs)?Rcs:0)+Rsa);
-     out.push(R("Junction with that sink",tj,"\u00b0C", tj>Tj?"over the limit":"within the limit"));
-     out.push(R("Margin",Tj-tj,"\u00b0C"));
-     out.push(R("Most it can dissipate",(Tj-Ta)/((isFinite(Rjc)?Rjc:0)+(isFinite(Rcs)?Rcs:0)+Rsa),"W"));
+   const {topo,Vin,Vout,Iout,fs,L,DCR,Rhs,Rls,tr,tf,QgH,QgL,Vdrv,tdead,Vfbody,RthH,RthL,RthInd,Ta}=v;
+   const boost=topo==="Synchronous boost";
+   if(![Vin,Vout,Iout,fs,L,DCR,Rhs,Rls,tr,tf,QgH,QgL,Vdrv,tdead,Vfbody,RthH,RthL,RthInd,Ta].every(isFinite) ||
+      Vin<=0||Vout<=0||Iout<=0||fs<=0||L<=0||DCR<0||Rhs<0||Rls<0||tr<0||tf<0||QgH<0||QgL<0||Vdrv<0||tdead<0||Vfbody<0||RthH<0||RthL<0||RthInd<0) return null;
+   const duty=boost ? 1-Vin/Vout : Vout/Vin;
+   if(!(duty>0&&duty<1)) return [R("Topology check",null,"",boost?"A boost needs Vout higher than Vin.":"A buck needs Vout lower than Vin.")];
+   const iL=boost ? Vout*Iout/Vin : Iout;
+   const dIL=boost ? Vin*duty/(L*fs) : (Vin-Vout)*duty/(L*fs);
+   const iVal=iL-dIL/2, iRms=Math.sqrt(iL*iL+dIL*dIL/12);
+   const iH=iRms*Math.sqrt(boost ? 1-duty : duty), iLfet=iRms*Math.sqrt(boost ? duty : 1-duty);
+   const pCondH=iH*iH*Rhs, pCondL=iLfet*iLfet*Rls, pInd=iRms*iRms*DCR;
+   const pGateH=QgH*Vdrv*fs, pGateL=QgL*Vdrv*fs;
+   const pSw=.5*(boost?Vout:Vin)*iL*(tr+tf)*fs;
+   const pBody=2*Vfbody*iL*tdead*fs;
+   /* What heats the die and what the converter pays are two different
+      numbers. The gate charge is spent in the driver and the gate loop,
+      so it counts against efficiency but must not be pushed through the
+      MOSFET's thermal path.                                            */
+   const pDieH=pCondH+(boost?pBody: pSw);
+   const pDieL=pCondL+(boost?pSw: pBody);
+   const pHigh=pDieH+pGateH;
+   const pLow=pDieL+pGateL;
+   const pTotal=pHigh+pLow+pInd, pOut=Vout*Iout, eta=pOut/(pOut+pTotal);
+   const tHigh=Ta+pDieH*RthH, tLow=Ta+pDieL*RthL, tInd=Ta+pInd*RthInd;
+   const hard=boost?"low-side MOSFET":"high-side MOSFET", body=boost?"high-side MOSFET":"low-side MOSFET";
+   const out=[R("Duty cycle",duty,"×",boost?"1 − Vin / Vout":"Vout / Vin"),
+              R("Output power",pOut,"W","Vout × Iout"),
+              R("Inductor average current",iL,"A", boost ? "Vout × Iout ÷ Vin — a boost's inductor carries the input current" : "the load current — a buck's inductor sits in series with the output"),
+              R("Inductor ripple ΔIL",dIL,"A", boost ? "Vin × D ÷ (L × f)" : "(Vin − Vout) × D ÷ (L × f)"),
+              R("Inductor RMS current",iRms,"A","√(Iavg² + ΔIL² ÷ 12) — the triangular ripple adds in quadrature with the DC"),
+              R("High-side MOSFET RMS current",iH,"A", "inductor IRMS × √"+(boost?"(1 − D)":"D")+" — it conducts only for that fraction of the cycle"),
+              R("Low-side MOSFET RMS current",iLfet,"A", "inductor IRMS × √"+(boost?"D":"(1 − D)")),
+              R("High-side conduction loss",pCondH,"W","IRMS² × RDS(on)"),R("Low-side conduction loss",pCondL,"W","IRMS² × RDS(on)"),
+              R("Hard-switching loss",pSw,"W","½ × "+(boost?"Vout":"Vin")+" × IL × (tr + tf) × f, assigned to the "+hard),
+              R("Body-diode dead-time loss",pBody,"W","assigned to the "+body+"; 2 × VF × IL × dead time × f"),
+              R("High-side gate-drive loss",pGateH,"W","Qg × Vdrive × f — drawn from the gate-driver supply, not dissipated in the FET"),
+              R("Low-side gate-drive loss",pGateL,"W","Qg × Vdrive × f — drawn from the gate-driver supply, not dissipated in the FET"),
+              R("Inductor copper loss",pInd,"W","inductor IRMS² × DCR"),
+              R("High-side total loss",pHigh,"W","conduction + "+(boost?"body diode":"hard switching")+" + gate drive \u2014 what the converter pays; only the first two heat the die"),
+              R("Low-side total loss",pLow,"W","conduction + "+(boost?"hard switching":"body diode")+" + gate drive \u2014 what the converter pays; only the first two heat the die"),
+              R("Total conversion loss",pTotal,"W","both MOSFETs plus the inductor's copper"),
+              R("Power-stage efficiency",100*eta,"%","Pout ÷ (Pout + total loss) × 100 — does not include controller quiescent or capacitor loss"),
+              R("High-side junction estimate",tHigh,"°C","ambient + (conduction + "+(boost?"body diode":"hard switching")+") × its entered thermal path \u2014 the gate-drive loss is left out, because the driver dissipates it"),
+              R("Low-side junction estimate",tLow,"°C","ambient + (conduction + "+(boost?"hard switching":"body diode")+") × its entered thermal path \u2014 the gate-drive loss is left out, because the driver dissipates it"),
+              R("Inductor temperature estimate",tInd,"°C","ambient + copper loss × its entered thermal path")];
+   if(iVal<=0) out.push(R("Conduction-mode warning",null,"","inductor current reaches zero; the CCM loss split and ripple estimates no longer apply."));
+   if(Math.max(tHigh,tLow,tInd)>125) out.push(R("Thermal warning",null,"","at least one entered thermal path puts its part above 125 °C; improve cooling or reduce loss."));
+   return out;
+ }},
+
+{id:"protection", group:"Power", name:"Fuse / PTC / inrush sizing",
+ note:[
+  "A fuse, resettable PTC and NTC limiter answer different questions. This calculator keeps them separate so a current rating is not mistaken for a fault, pulse or inrush rating.",
+  "Fuse I²t data must be compared with the maker's time-current curve and pre-arcing I²t at the actual pulse duration. PTC hold current also has to be read from its temperature-derating curve.",
+  "An NTC starts cold and changes resistance during the charge pulse. Its cold-resistance calculation is a conservative first step; verify its energy, steady loss and cool-down time in the datasheet."
+ ],
+ fields:[FS("kind","Protection to size",["Fuse","PTC resettable fuse","Capacitor inrush limiter"],"Fuse"),
+         F("Irun","Continuous load current","A","2"),
+         {...F("derate","Fuse continuous-use fraction","%","75"),showWhen:{k:"kind",is:"Fuse"}},
+         {...F("Istart","Startup pulse current","A","8"),showWhen:{k:"kind",is:"Fuse"}},
+         {...F("tstart","Startup pulse duration","s","20m"),showWhen:{k:"kind",is:"Fuse"}},
+         {...F("I2tfuse","Fuse pre-arcing I²t (optional)","A²s","2"),showWhen:{k:"kind",is:"Fuse"}},
+         {...F("Ihold25","PTC hold current at 25 °C","A","2.5"),showWhen:{k:"kind",is:"PTC resettable fuse"}},
+         {...F("Itrip25","PTC trip current at 25 °C","A","5"),showWhen:{k:"kind",is:"PTC resettable fuse"}},
+         {...F("Ta","PTC ambient temperature","°C","50"),showWhen:{k:"kind",is:"PTC resettable fuse"}},
+         {...F("holdDerate","PTC hold-current derating","%/°C","0.7"),showWhen:{k:"kind",is:"PTC resettable fuse"}},
+         {...F("Rhot","PTC hot resistance","Ω","0.2"),showWhen:{k:"kind",is:"PTC resettable fuse"}},
+         {...F("Vin","Charging voltage","V","325"),showWhen:{k:"kind",is:"Capacitor inrush limiter"}},
+         {...F("Cbulk","Bulk capacitance","F","220u"),showWhen:{k:"kind",is:"Capacitor inrush limiter"}},
+         {...F("Rline","Line / bridge / capacitor ESR","Ω","2"),showWhen:{k:"kind",is:"Capacitor inrush limiter"}},
+         {...F("IpkMax","Target maximum inrush current","A","10"),showWhen:{k:"kind",is:"Capacitor inrush limiter"}},
+         {...F("RlimCold","Selected limiter cold resistance","Ω","33"),showWhen:{k:"kind",is:"Capacitor inrush limiter"}},
+         {...F("RlimHot","Limiter hot resistance","Ω","1"),showWhen:{k:"kind",is:"Capacitor inrush limiter"}}],
+ run(v){
+   const {kind,Irun}=v;
+   if(!isFinite(Irun)||Irun<0) return null;
+   if(kind==="Fuse"){
+     const {derate,Istart,tstart,I2tfuse}=v;
+     if(![derate,Istart,tstart].every(isFinite)||derate<=0||derate>100||Istart<0||tstart<0) return null;
+     const i2t=Istart*Istart*tstart, rating=Irun/(derate/100);
+     const out=[R("Minimum continuous fuse rating",rating,"A","load current ÷ allowed continuous-use fraction"),
+                R("Startup-pulse I²t",i2t,"A²s","Istart² × pulse duration"),
+                R("Recommended next rating",rating*1.25,"A","choose the next available rating only after checking its time-current curve")];
+     if(isFinite(I2tfuse)&&I2tfuse>0) out.push(R("Pre-arcing I²t margin",I2tfuse/i2t,"×",I2tfuse<i2t?"the entered fuse I²t is below the startup pulse":"do not rely on this alone; use the full curve"));
+     return out;
    }
-   out.push(R("Case temperature",Ta+Pd*((isFinite(Rsa)?Rsa:need)+(isFinite(Rcs)?Rcs:0)),"\u00b0C"));
+   if(kind==="PTC resettable fuse"){
+     const {Ihold25,Itrip25,Ta,holdDerate,Rhot}=v;
+     if(![Ihold25,Itrip25,Ta,holdDerate,Rhot].every(isFinite)||Ihold25<=0||Itrip25<=0||Rhot<0) return null;
+     const factor=Math.max(0,1-(Ta-25)*holdDerate/100), hold=Ihold25*factor, trip=Itrip25*factor, p=Irun*Irun*Rhot;
+     const out=[R("Estimated hold current at ambient",hold,"A","linear first pass from the entered coefficient; the datasheet curve governs"),
+                R("Estimated trip current at ambient",trip,"A","the same linear first pass, on the entered trip current"),R("Continuous-current use",100*Irun/hold,"%","Irun ÷ the estimated hold current × 100 — "+(Irun>hold?"above the estimated hold current":"leave margin for enclosure temperature and tolerance")),
+                R("PTC hot dissipation",p,"W","Irun² × hot resistance")];
+     if(Irun>=trip) out.push(R("PTC state warning",null,"","the entered current is at or above the estimated trip current."));
+     return out;
+   }
+   const {Vin,Cbulk,Rline,IpkMax,RlimCold,RlimHot}=v;
+   if(![Vin,Cbulk,Rline,IpkMax,RlimCold,RlimHot].every(isFinite)||Vin<=0||Cbulk<=0||Rline<0||IpkMax<=0||RlimCold<0||RlimHot<0) return null;
+   const rTotal=Rline+RlimCold, peak=Vin/rTotal, tau=rTotal*Cbulk, energy=.5*Cbulk*Vin*Vin, need=Math.max(0,Vin/IpkMax-Rline);
+   const out=[R("Minimum cold limiter resistance",need,"Ω","Vin \u00f7 the target peak current \u2212 the entered line resistance, to hold inrush at or below the target"),R("Selected peak inrush current",peak,"A","Vin ÷ (line resistance + cold limiter resistance)"),
+              R("Bulk-capacitor charge energy",energy,"J","½ × C × V²"),R("Initial RC charge time constant",tau,"s","(line resistance + cold limiter resistance) × Cbulk"),
+              R("Approximate 99 % charge time",5*tau,"s","five time constants, before the NTC resistance changes"),
+              R("Initial limiter dissipation",peak*peak*RlimCold,"W","instantaneous cold-resistance loss"),
+              R("Hot limiter continuous loss",Irun*Irun*RlimHot,"W","after an NTC has warmed up")];
+   if(peak>IpkMax) out.push(R("Inrush warning",null,"","the selected cold resistance does not meet the entered peak-current target."));
+   return out;
+ }},
+
+{id:"diode", group:"Components", name:"Diode selection & losses",
+ note:[
+  "Combines forward conduction, optional dynamic resistance and hard-switch reverse-recovery loss. A Schottky normally has negligible QRR, but its reverse leakage rises sharply with temperature.",
+  "Use voltage and current ratings with margin. Junction temperature is a steady-state estimate from the entered thermal path; pulse surge and repetitive avalanche limits still belong to the diode datasheet."
+ ],
+ fields:[FS("type","Diode technology",["Schottky","Ultrafast PN","Standard PN"],"Schottky"),
+         F("Iavg","Average forward current","A","2"),F("Irms","Forward RMS current","A","2.2"),
+         F("Vf","Forward drop at operating current","V","0.55"),F("Rd","Additional dynamic resistance (optional)","Ω","0"),
+         F("Vrev","Maximum repetitive reverse voltage","V","40"),F("Vrrm","Diode VRRM rating","V","60"),
+         F("fs","Hard-switching frequency","Hz","250k"),F("Qrr","Reverse-recovery charge QRR (optional)","C",""),
+         F("Rth","Junction-to-ambient thermal path","°C/W","35"),F("Ta","Ambient","°C","40"),F("Tjmax","Junction-temperature limit","°C","150")],
+ run(v){
+   const {type,Iavg,Irms,Vf,Rd,Vrev,Vrrm,fs,Qrr,Rth,Ta,Tjmax}=v;
+   if(![Iavg,Irms,Vf,Rd,Vrev,Vrrm,fs,Rth,Ta,Tjmax].every(isFinite)||Iavg<0||Irms<0||Vf<0||Rd<0||Vrev<0||Vrrm<=0||fs<0||Rth<0) return null;
+   const pFwd=Iavg*Vf+Irms*Irms*Rd, pRR=isFinite(Qrr)&&Qrr>0 ? Qrr*Vrev*fs : 0, p=pFwd+pRR, tj=Ta+p*Rth;
+   const out=[R("Forward-conduction loss",pFwd,"W","IAVG × VF + IRMS² × additional dynamic resistance"),
+              R("Reverse-recovery loss",pRR,"W",isFinite(Qrr)&&Qrr>0?"QRR × reverse voltage × switching frequency":"QRR was left blank; not included"),
+              R("Total diode loss",p,"W","forward conduction + reverse recovery"),R("Junction temperature estimate",tj,"°C","ambient + total loss × the entered thermal path"),
+              R("Junction-temperature margin",Tjmax-tj,"°C","the entered Tj(max) − the estimate above"),R("Required VRRM with 25 % margin",1.25*Vrev,"V","repetitive reverse voltage × 1.25"),
+              R("Voltage-rating use",100*Vrev/Vrrm,"% of VRRM","reverse voltage ÷ the entered VRRM × 100"),R("Suggested average-current rating",1.25*Iavg,"A","starting margin; derate for case temperature and waveform")];
+   if(Vrev>Vrrm) out.push(R("Reverse-voltage warning",null,"","the entered repetitive reverse voltage exceeds the diode's VRRM rating."));
+   if(tj>Tjmax) out.push(R("Thermal warning",null,"","the entered thermal path puts the diode above its junction-temperature limit."));
+   if(type==="Schottky"&&isFinite(Qrr)&&Qrr>0) out.push(R("Technology note",null,"","a Schottky should not have a PN reverse-recovery charge; check whether the entered part is actually a silicon-carbide or PN diode."));
+   return out;
+ }},
+
+{id:"heatsink", group:"Power", name:"Heatsink & thermal stack",
+ note:[
+   "A heatsink is only the final resistance in the path: junction to case, interface, heatsink, then air. Enter the device loss at the actual duty cycle and junction temperature.",
+   "θJA is useful only as a bare-device comparison from the manufacturer's stated test board. Once a heatsink is fitted, use θJC + θCS + θSA instead.",
+   "These are steady-state values. Short pulses need the part's transient thermal-impedance curve, and a fan needs the heatsink's forced-air θSA rating."
+ ],
+ fields:[F("Pd","Device dissipation","W","4.35"),F("Tj","Allowed junction temperature","°C","125"),
+         F("Ta","Ambient","°C","40"),F("Rjc","θJC junction to case","°C/W","3"),
+         F("Rcs","θCS interface pad / grease","°C/W","0.5"),
+         F("Rsa","θSA of selected heatsink (optional)","°C/W",""),
+         F("Rja","Bare-device θJA for comparison (optional)","°C/W","")],
+ tbl:"packages",
+ run(v){
+   const {Pd,Tj,Ta,Rjc,Rcs,Rsa,Rja} = v;
+   if(!isFinite(Pd)||!isFinite(Tj)||!isFinite(Ta)||Pd<=0) return null;
+   if(Tj<=Ta) return [R("Thermal target",null,"","the allowed junction temperature must be higher than ambient")];
+   const rjc=isFinite(Rjc)&&Rjc>=0?Rjc:0, rcs=isFinite(Rcs)&&Rcs>=0?Rcs:0;
+   const budget=(Tj-Ta)/Pd, fixed=rjc+rcs, need=budget-fixed;
+   const out=[R("Total junction-to-ambient budget",budget,"\u00b0C/W","(junction limit \u2212 ambient) \u00f7 device dissipation"),
+              R("Fixed path \u03b8JC + \u03b8CS",fixed,"\u00b0C/W","inside the package and its interface"),
+              R("Heatsink must be under",need,"\u00b0C/W",
+                need<=0?"no heatsink can meet this target \u2014 reduce loss or improve the package/interface":
+                need<1?"typically needs a large sink with forced air":need<5?"typically needs a substantial extruded sink":"often possible with a small clip-on or board-mounted sink")];
+   if(isFinite(Rsa)&&Rsa>=0){
+     const total=fixed+Rsa, tsink=Ta+Pd*Rsa, tcase=tsink+Pd*rcs, tj=tcase+Pd*rjc;
+     out.push(R("Total \u03b8JA with selected sink",total,"\u00b0C/W","\u03b8JC + \u03b8CS + \u03b8SA"),
+              R("Heatsink temperature",tsink,"\u00b0C","estimate at the sink base in the entered ambient"),
+              R("Case temperature",tcase,"\u00b0C","estimate after the thermal interface"),
+              R("Junction with selected sink",tj,"\u00b0C",tj>Tj?"over the entered limit":"within the entered limit"),
+              R("Junction margin",Tj-tj,"\u00b0C","the entered junction limit \u2212 the estimate above"),
+              R("Maximum dissipation with this sink",(Tj-Ta)/total,"W","steady state at the entered ambient"));
+   }else if(need>0){
+     const tsink=Ta+Pd*need, tcase=tsink+Pd*rcs;
+     out.push(R("Target sink-base temperature",tsink,"\u00b0C","if the sink is chosen exactly at the required \u03b8SA"),
+              R("Target case temperature",tcase,"\u00b0C","before the \u03b8JC temperature rise"));
+   }
+   if(isFinite(Rja)&&Rja>=0){
+     const bare=Ta+Pd*Rja;
+     out.push(R("Bare-device junction with \u03b8JA",bare,"\u00b0C",bare>Tj?"above the entered limit":"comparison only; \u03b8JA depends on the maker's test board"));
+   }
    return out;
  }}
 ];
@@ -2221,6 +3126,10 @@ DIAGRAMS.heatsink = (r,o) => {
   const stage = (x,label,val,col)=>
     `<rect x="${x}" y="60" width="86" height="40" rx="2" fill="${col}" stroke="var(--ink)" stroke-width="${SW}"/>`
     + TX(x+43,78,label,"middle","var(--ink)",11) + TX(x+43,92,val||"\u2014","middle","var(--ink3)",10);
+  const hasSink=String((r&&r.Rsa)||"").trim()!=="";
+  const temperatures=hasSink
+    ? "sink "+gotv(o,"Heatsink temperature")+"  \u00b7  case "+gotv(o,"Case temperature")
+    : "target sink base "+gotv(o,"Target sink-base temperature")+"  \u00b7  target case "+gotv(o,"Target case temperature");
   return SVG(
     TX(30,84,"die","end","var(--alert)",11) + W([[36,80],[56,80]]) +
     stage(56,"\u03b8JC",vv(r,"Rjc","")+" \u00b0C/W","var(--alert-soft)") +
@@ -2229,13 +3138,85 @@ DIAGRAMS.heatsink = (r,o) => {
     W([[248,80],[268,80]]) +
     stage(268,"\u03b8SA",(vv(r,"Rsa","") || (got(o,"Heatsink must be under")||""))+"","var(--esd-soft)") +
     W([[354,80],[374,80]]) + TX(380,84,"air","start","var(--esd)",11) +
-    TX(200,36,"Tj "+vv(r,"Tj","")+" \u00b0C  \u2192  Ta "+vv(r,"Ta","")+" \u00b0C  with "+vv(r,"Pd","")+" W",
+    TX(200,32,"P = "+vv(r,"Pd","")+" W  \u00b7  Ta = "+vv(r,"Ta","")+" \u00b0C  \u00b7  Tj limit = "+vv(r,"Tj","")+" \u00b0C",
        "middle","var(--ink2)",11.5) +
-    TX(200,132,"budget "+(got(o,"Total \u03b8 budget")||"\u2014")+
-               "   \u00b7   sink must be under "+(got(o,"Heatsink must be under")||"\u2014"),
-       "middle","var(--kapton)",12),
-    400, 146);
+    TX(200,128,temperatures,"middle","var(--ink3)",10.5) +
+    TX(200,149,hasSink
+      ? "junction "+gotv(o,"Junction with selected sink")+"  \u00b7  margin "+gotv(o,"Junction margin")
+      : "selected sink: enter its \u03b8SA to calculate junction temperature",
+       "middle","var(--kapton)",11.5) +
+    TX(200,171,"\u03b8SA must be under "+gotv(o,"Heatsink must be under")+
+               "  \u00b7  fixed path "+gotv(o,"Fixed path \u03b8JC + \u03b8CS"),
+       "middle","var(--esd)",10.5),
+    400, 190);
 };
+
+DIAGRAMS.sync = (r,o) => {
+  const boost=(r.topo||"Synchronous buck")==="Synchronous boost";
+  const buckBody=
+    NODE(148,12,"Vin","middle") + W([[148,20],[148,37]]) + NFET(135,70) +
+    W([[40,70],[102,70]]) + NODE(34,60,"gate QH","start") +
+    W([[148,103],[148,137]]) + NFET(135,170) + W([[40,170],[102,170]]) + NODE(34,160,"gate QL","start") + GND(148,203) +
+    W([[148,103],[196,103]]) + INDH(220,103,"L",vv(r,"L","")) + W([[244,103],[350,103]]) + NODE(382,107,"Vout","end") +
+    W([[300,103],[300,126]]) + RESV(300,145,"LOAD",vv(r,"Iout","")+" A") + W([[300,164],[300,180]]) + GND(300,180);
+  const boostBody=
+    NODE(382,29,"Vout","end") + W([[148,37],[148,25],[350,25]]) + NFET(135,70) +
+    W([[40,70],[102,70]]) + NODE(34,60,"gate QH","start") +
+    W([[148,103],[148,137]]) + NFET(135,170) + W([[40,170],[102,170]]) + NODE(34,160,"gate QL","start") + GND(148,203) +
+    NODE(24,110,"Vin","start") + W([[24,120],[76,120]]) + INDH(100,120,"L",vv(r,"L","")) +
+    W([[124,120],[148,120]]) + DOT(148,120) +
+    W([[300,25],[300,66]]) + RESV(300,85,"LOAD",vv(r,"Iout","")+" A") + W([[300,104],[300,120]]) + GND(300,120);
+  return SVG(
+    (boost?boostBody:buckBody) +
+    TX(200,238,"hard-switch loss = "+gotv(o,"Hard-switching loss")+"  \u00b7  body diode = "+gotv(o,"Body-diode dead-time loss"),"middle","var(--ink3)",10.5) +
+    TX(200,260,"QH "+gotv(o,"High-side total loss")+"  \u00b7  QL "+gotv(o,"Low-side total loss")+"  \u00b7  L "+gotv(o,"Inductor copper loss"),"middle","var(--kapton)",11) +
+    TX(200,282,"total loss = "+gotv(o,"Total conversion loss")+"  \u00b7  efficiency = "+gotv(o,"Power-stage efficiency"),"middle","var(--esd)",11.5),
+    400, 298);
+};
+
+DIAGRAMS.protection = (r,o) => {
+  const kind=r.kind||"Fuse", inrush=kind==="Capacitor inrush limiter";
+  const label=inrush?"NTC / R":kind==="PTC resettable fuse"?"PTC":"FUSE";
+  const value=inrush?vv(r,"RlimCold",""):kind==="Fuse"?gotv(o,"Minimum continuous fuse rating"):vv(r,"Ihold25","");
+  const network=inrush
+    ? W([[24,70],[110,70]]) + BOX(110,46,90,48,label,value) + W([[200,70],[330,70]]) + NODE(24,60,"SOURCE","start") +
+      W([[300,70],[300,96]]) + CAPV(300,100,"Cbulk",vv(r,"Cbulk","")) + W([[300,104],[300,136]]) + GND(300,136)
+    : W([[24,70],[110,70]]) + BOX(110,46,90,48,label,value) + W([[200,70],[330,70]]) + NODE(24,60,"SOURCE","start") +
+      BOX(290,46,72,48,"LOAD",vv(r,"Irun","")+" A");
+  const line=inrush
+    ? "Ipeak = "+gotv(o,"Selected peak inrush current")+"  \u00b7  energy = "+gotv(o,"Bulk-capacitor charge energy")
+    : kind==="Fuse"
+      ? "minimum rating = "+gotv(o,"Minimum continuous fuse rating")+"  \u00b7  startup I²t = "+gotv(o,"Startup-pulse I²t")
+      : "hold @ ambient = "+gotv(o,"Estimated hold current at ambient")+"  \u00b7  use = "+gotv(o,"Continuous-current use");
+  return SVG(
+    network + ARROW(42,38,300,38,"I") +
+    TX(200,166,line,"middle","var(--kapton)",11.5) +
+    TX(200,188,inrush?"hot loss = "+gotv(o,"Hot limiter continuous loss")+"  \u00b7  99 % charge = "+gotv(o,"Approximate 99 % charge time"):
+       kind==="Fuse"?"next rating = "+gotv(o,"Recommended next rating"):"PTC hot loss = "+gotv(o,"PTC hot dissipation"),"middle","var(--ink3)",10.5),
+    400, 205);
+};
+
+DIAGRAMS.opnoise = (r,o) => {
+  const inv=(r.topo||"Non-inverting")==="Inverting";
+  return SVG(
+    NODE(24,70,"Vin","start") + W([[24,80],[71,80]]) + RESH(90,80,"Rs",vv(r,"Rs","")) + W([[109,80],[150,80]]) +
+    BOX(150,56,92,48,"OP-AMP","en, in") + W([[242,80],[278,80]]) + BOX(278,56,82,48,"ADC",vv(r,"bits","")+" bit") +
+    TX(196,44,inv?"inverting noise gain":"non-inverting noise gain","middle","var(--ink3)",10.5) +
+    TX(196,122,inv?"Rin "+vv(r,"Rin","")+"  \u00b7  Rf "+vv(r,"Rf",""):"Rg "+vv(r,"Rg","")+"  \u00b7  Rf "+vv(r,"Rf",""),"middle","var(--ink2)",10.5) +
+    TX(200,158,"output noise = "+gotv(o,"Amplifier output noise (RMS)")+"  \u00b7  SNR = "+gotv(o,"Amplifier-only SNR"),"middle","var(--kapton)",11.5) +
+    TX(200,180,"ADC total = "+gotv(o,"Total noise at ADC (RMS)")+"  \u00b7  system SNR = "+gotv(o,"System SNR including ADC"),"middle","var(--esd)",10.5),
+    400, 198);
+};
+
+DIAGRAMS.diode = (r,o) => SVG(
+  NODE(24,70,"source","start") + W([[24,80],[165,80]]) +
+  '<rect class="diagram-part" x="165" y="49" width="70" height="62" rx="2" fill="var(--card)" stroke="var(--ink)" stroke-width="'+SW+'"/>' +
+  DIOH(200,80) + W([[235,80],[330,80]]) + BOX(290,56,72,48,"LOAD",vv(r,"Iavg","")+" A") +
+  NODE(382,84,"load","end") + ARROW(42,52,150,52,"IF") +
+  TX(200,137,"forward = "+gotv(o,"Forward-conduction loss")+"  \u00b7  recovery = "+gotv(o,"Reverse-recovery loss"),"middle","var(--ink3)",11) +
+  TX(200,159,"total = "+gotv(o,"Total diode loss")+"  \u00b7  Tj = "+gotv(o,"Junction temperature estimate"),"middle","var(--kapton)",11.5) +
+  TX(200,181,"VRRM use = "+gotv(o,"Voltage-rating use")+"  \u00b7  suggested IF(AV) = "+gotv(o,"Suggested average-current rating"),"middle","var(--esd)",10.5),
+  400, 198);
 
 
 
@@ -2333,9 +3314,10 @@ const AMP_CALCS = [
      const need = inv ? R2*Hw/(swing-Hw) : R2*Hw/swing;
      const e = nearestE24(need);
      const got = inv ? swing*e/(e+R2) : swing*e/R2;
-     return [RP("R1 needed",need,"\u03a9"),RP("Nearest E24",e,"\u03a9"),
-             R("Window with E24",got,"V"),
-             R("Ratio R1 : R2",need/R2,"\u00d7")];
+     return [RP("R1 needed",need,"\u03a9", inv ? "R2 \u00d7 window \u00f7 (swing \u2212 window)" : "R2 \u00d7 window \u00f7 swing"),
+             RP("Nearest E24",e,"\u03a9"),
+             R("Window with E24",got,"V", inv ? "swing \u00d7 R1 \u00f7 (R1 + R2)" : "swing \u00d7 R1 \u00f7 R2"),
+             R("Ratio R1 : R2",need/R2,"\u00d7","R1 \u00f7 R2")];
    }
    if(!isFinite(R1)||!isFinite(R2)||R1<=0||R2<=0) return null;
 
@@ -2352,11 +3334,13 @@ const AMP_CALCS = [
      VTL = Vref + (Vref-VoH)*R1/R2;
      hyst = swing*R1/R2;
    }
-   const out = [R("Upper trip point",VTH,"V", inv?"crossed on the way up, output goes low":"crossed on the way up, output goes high"),
-                R("Lower trip point",VTL,"V", inv?"crossed on the way down, output goes high":"crossed on the way down, output goes low"),
-                R("Window",hyst,"V","how far the signal must come back before it flips again"),
-                R("Centre of the window",(VTH+VTL)/2,"V"),
-                R("Feedback fraction",inv ? R1/(R1+R2) : R1/R2,"\u00d7","of the output swing")];
+   const out = [R("Upper trip point",VTH,"V", (inv ? "(Vref \u00d7 R2 + VoH \u00d7 R1) \u00f7 (R1 + R2) \u2014 crossed on the way up, output goes low"
+                                                : "Vref + (Vref \u2212 VoL) \u00d7 R1 \u00f7 R2 \u2014 crossed on the way up, output goes high")),
+                R("Lower trip point",VTL,"V", (inv ? "(Vref \u00d7 R2 + VoL \u00d7 R1) \u00f7 (R1 + R2) \u2014 crossed on the way down, output goes high"
+                                                : "Vref + (Vref \u2212 VoH) \u00d7 R1 \u00f7 R2 \u2014 crossed on the way down, output goes low")),
+                R("Window",hyst,"V", (inv ? "swing \u00d7 R1 \u00f7 (R1 + R2)" : "swing \u00d7 R1 \u00f7 R2")+" \u2014 how far the signal must come back before it flips again"),
+                R("Centre of the window",(VTH+VTL)/2,"V","(upper + lower) \u00f7 2"),
+                R("Feedback fraction",inv ? R1/(R1+R2) : R1/R2,"\u00d7", (inv ? "R1 \u00f7 (R1 + R2)" : "R1 \u00f7 R2")+" of the output swing")];
 
    /* a threshold outside the output range can never be reached */
    const lo = Math.min(VoL,VoH), hi = Math.max(VoL,VoH);
@@ -2364,7 +3348,56 @@ const AMP_CALCS = [
      out.push(R("Warning",null,"","a trip point sits outside "+siFmt(lo,"V")+" to "+siFmt(hi,"V")+" \u2014 the output would latch and never come back"));
    if(hyst < 0.02)
      out.push(R("Warning",null,"","a window under 20 mV is thinner than the noise on most boards"));
-   out.push(R("Current in the feedback leg at the flip",swing/(R1+R2),"A","keep it well inside what the output can source"));
+   out.push(R("Current in the feedback leg at the flip",swing/(R1+R2),"A","swing \u00f7 (R1 + R2) \u2014 keep it well inside what the output can source"));
+   return out;
+ }},
+
+{id:"opnoise", group:"Op-amps", name:"Op-amp noise & SNR",
+ note:[
+  "Combines white voltage noise, input-current noise and the Johnson noise of the gain-setting resistors over the entered closed-loop noise bandwidth.",
+  "It is a first-pass white-noise calculation: 1/f noise, bias-current offsets, EMI, reference noise, anti-alias filtering and source noise outside the resistor are separate design checks.",
+  "If an ADC is supplied, its ideal quantisation noise is combined in RMS. The resulting ENOB is signal-specific, not the converter's datasheet ENOB."
+ ],
+ fields:[FS("topo","Amplifier topology",["Non-inverting","Inverting"],"Non-inverting"),
+         F("Rs","Source resistance","Ω","1k"),{...F("Rg","Gain resistor Rg to ground","Ω","1k"),showWhen:{k:"topo",is:"Non-inverting"}},
+         {...F("Rin","Input resistor Rin","Ω","10k"),showWhen:{k:"topo",is:"Inverting"}},F("Rf","Feedback resistor Rf","Ω","10k"),
+         F("en","Op-amp voltage-noise density","V/√Hz","10n"),F("in","Op-amp current-noise density","A/√Hz","1p"),
+         F("B","Closed-loop noise bandwidth","Hz","20k"),F("T","Resistor temperature","°C","25"),F("Vsig","Input sine signal (RMS)","V","0.1"),
+         F("Vref","ADC full-scale / reference (optional)","V","3.3"),F("bits","ADC bits (optional)","","12")],
+ run(v){
+   const {topo,Rs,Rg,Rin,Rf,en,in:inNoise,B,T,Vsig,Vref,bits}=v;
+   const inv=topo==="Inverting", gainR=inv?Rin:Rg;
+   if(![Rs,gainR,Rf,en,inNoise,B,T,Vsig].every(isFinite)||Rs<0||gainR<=0||Rf<=0||en<0||inNoise<0||B<=0||Vsig<0) return null;
+   const kelvin=T+273.15;
+   if(kelvin<=0) return [R("Temperature",null,"","enter a temperature above absolute zero.")];
+   const k=1.380649e-23, thermal=r=>Math.sqrt(4*k*kelvin*r);
+   const signalGain=inv?Rf/Rin:1+Rf/Rg, noiseGain=1+Rf/gainR;
+   const nSource=thermal(Rs)*(inv?signalGain:noiseGain);
+   const nGain=thermal(gainR)*(inv?signalGain:Rf/Rg);
+   const nFeedback=thermal(Rf), nAmp=en*noiseGain, nCurrent=inNoise*(inv?Rf:Rs*noiseGain);
+   const density=Math.hypot(nSource,nGain,nFeedback,nAmp,nCurrent), ampRms=density*Math.sqrt(B);
+   const signalOut=Vsig*signalGain;
+   const out=[R("Closed-loop signal gain",signalGain,"×",inv?"magnitude; the output is inverted":"non-inverting gain"),
+              R("Noise gain",noiseGain,"×","sets op-amp voltage-noise gain"),
+              R("Source-resistor output noise density",nSource,"V/√Hz","√(4kTRs), carried to the output by the "+(inv?"signal gain":"noise gain")),
+              R("Gain-resistor output noise density",nGain,"V/√Hz","√(4kTR) on "+(inv?"Rin":"Rg")+", carried to the output"),
+              R("Feedback-resistor output noise density",nFeedback,"V/√Hz","√(4kTRf) — Rf's own thermal noise arrives at the output directly"),
+              R("Op-amp voltage-noise density at output",nAmp,"V/√Hz","en × noise gain — en is amplified by the noise gain, not the signal gain"),
+              R("Op-amp current-noise density at output",nCurrent,"V/√Hz","in × "+(inv?"Rf":"Rs, then the noise gain")+" — the current noise turned into a voltage"),
+              R("Total output-noise density",density,"V/√Hz","the five above added in quadrature: they are uncorrelated"),
+              R("Amplifier output noise (RMS)",ampRms,"V","white-noise density × √bandwidth"),
+              R("Input-referred amplifier noise (RMS)",ampRms/signalGain,"V","output noise ÷ signal gain — what it would look like at the input"),
+              R("Output signal (RMS)",signalOut,"V","input × signal gain"),
+              R("Amplifier-only SNR",signalOut>0?20*Math.log10(signalOut/ampRms):NaN,"dB","20 log₁₀(signal ÷ amplifier noise)")];
+   if(isFinite(Vref)&&Vref>0&&isFinite(bits)&&bits>0&&bits<=32){
+     const lsb=Vref/Math.pow(2,Math.round(bits)), q=lsb/Math.sqrt(12), total=Math.hypot(ampRms,q), snr=signalOut>0?20*Math.log10(signalOut/total):NaN;
+     out.push(R("ADC LSB",lsb,"V","Vref ÷ 2^bits"),
+              R("ADC quantisation noise (RMS)",q,"V","ideal LSB ÷ √12"),
+              R("Total noise at ADC (RMS)",total,"V","√(amplifier noise² + quantisation²)"),
+              R("System SNR including ADC",snr,"dB","20 log₁₀(signal ÷ total noise)"),
+              R("Signal-specific effective bits",(snr-1.76)/6.02,"bits","from sine-wave SNR; not the ADC datasheet ENOB"));
+     if(signalOut*Math.SQRT2>Vref) out.push(R("ADC headroom warning",null,"","the entered sine-wave peak exceeds the ADC full-scale reference."));
+   }
    return out;
  }}
 ];
@@ -2386,8 +3419,8 @@ const EXTRA_CALCS = [
    const {Vin,R1,R2,RL,useLoad} = v;
    if(!isFinite(Vin)||!isFinite(R1)||!isFinite(R2)||R1<=0||R2<=0) return null;
    const vOpen = Vin*R2/(R1+R2), rth = R1*R2/(R1+R2);
-   const out = [R("Open-circuit output",vOpen,"V"),
-                R("Thevenin resistance",rth,"Ω","the output impedance seen by a load")];
+   const out = [R("Open-circuit output",vOpen,"V","Vin \u00d7 R2 \u00f7 (R1 + R2)"),
+                R("Thevenin resistance",rth,"Ω","R1 \u2225 R2 \u2014 the output impedance seen by a load")];
    if(!useLoad){
      out.push(R("Load status",null,"","RL is disconnected — Vout is the open-circuit voltage"));
      return out;
@@ -2398,10 +3431,13 @@ const EXTRA_CALCS = [
    }
    const rb = R2*RL/(R2+RL), vLoad = Vin*rb/(R1+rb), iLoad = vLoad/RL;
    const iIn = Vin/(R1+rb), drop = vOpen-vLoad;
-   out.push(R("Loaded output",vLoad,"V"),R("Output drop",drop,"V",(100*drop/vOpen).toFixed(1)+" % below the open-circuit value"),
-            R("Load current",iLoad,"A"),R("Divider input current",iIn,"A"),
-            R("R1 dissipation",iIn*iIn*R1,"W"),R("R2 dissipation",vLoad*vLoad/R2,"W"),
-            R("Load dissipation",vLoad*vLoad/RL,"W"));
+   out.push(R("Loaded output",vLoad,"V","Vin \u00d7 (R2 \u2225 RL) \u00f7 (R1 + R2 \u2225 RL)"),
+            R("Output drop",drop,"V","open-circuit \u2212 loaded, "+(100*drop/vOpen).toFixed(1)+" % below the open-circuit value"),
+            R("Load current",iLoad,"A","loaded output \u00f7 RL"),
+            R("Divider input current",iIn,"A","Vin \u00f7 (R1 + R2 \u2225 RL)"),
+            R("R1 dissipation",iIn*iIn*R1,"W","I\u00b2 \u00d7 R1, on the input current"),
+            R("R2 dissipation",vLoad*vLoad/R2,"W","V\u00b2 \u00f7 R2, on the loaded output"),
+            R("Load dissipation",vLoad*vLoad/RL,"W","V\u00b2 \u00f7 RL"));
    return out;
  }},
 
@@ -2431,29 +3467,35 @@ const EXTRA_CALCS = [
    const rDrive = Rsrc+rth, fc=1/(2*Math.PI*rDrive*C);
    const n = Math.max(1,Math.round(bits||10));
    const tSettle = (n+1)*Math.LN2*rDrive*C;
-   const out = [R("Rtop needed",rNeed,"Ω"),R("Safe E24 Rtop",rTop,"Ω","rounded up so the ADC pin stays at or below full scale"),
-                R("Actual ADC maximum",vAdc,"V"),R("ADC headroom",Vref-vAdc,"V"),
-                R("Divider Thevenin resistance",rth,"Ω"),R("Filter cut-off",fc,"Hz"),
-                R("½ LSB settling time",tSettle,"s",n+" bit accuracy after a full-scale step")];
+   const out = [R("Rtop needed",rNeed,"Ω","Rbot × (Vsig ÷ Vref − 1)"),
+                R("Safe E24 Rtop",rTop,"Ω","rounded up so the ADC pin stays at or below full scale"),
+                R("Actual ADC maximum",vAdc,"V","Vsig × Rbot ÷ (Rtop + Rbot)"),
+                R("ADC headroom",Vref-vAdc,"V","Vref − the actual maximum"),
+                R("Divider Thevenin resistance",rth,"Ω","Rtop ∥ Rbot — what the ADC's sampling capacitor is charged through"),
+                R("Filter cut-off",fc,"Hz","1 ÷ (2π × (Rsource + Rthevenin) × C)"),
+                R("½ LSB settling time",tSettle,"s","(bits + 1) × ln2 × R × C — "+n+" bit accuracy after a full-scale step")];
    const lsb=Vref/Math.pow(2,n);
    const refError=Vref*(VrefErr/100+VrefTC*Tspan*1e-6);
    const dividerError=Vref*divErr/100, offsetError=offset*lsb, inlError=inl*lsb;
    const quantNoise=lsb/Math.sqrt(12), randomRSS=Math.hypot(quantNoise,noise);
    const conservative=refError+dividerError+offsetError+inlError+3*randomRSS;
    const accuracyBits=Math.max(0,n-Math.log2(Math.max(1,conservative/lsb)));
-   out.push(R("ADC LSB size",lsb,"V"),R("Quantisation noise (RMS)",quantNoise,"V"),
-            R("Reference error",refError,"V","initial error plus entered temperature drift"),
-            R("Divider ratio error",dividerError,"V"),R("ADC offset error",offsetError,"V"),
-            R("ADC INL error",inlError,"V"),R("Input-referred noise (RMS)",noise,"V"),
-            R("RSS random uncertainty",randomRSS,"V","quantisation and entered noise"),
-            R("Conservative total uncertainty",conservative,"V","static errors + 3σ random uncertainty"),
-            R("Conservative error",100*conservative/Vref,"% of full scale"),
-            R("Resolution after error budget",accuracyBits,"bit","accuracy estimate, not datasheet ENOB"));
+   out.push(R("ADC LSB size",lsb,"V","Vref ÷ 2^bits"),
+            R("Quantisation noise (RMS)",quantNoise,"V","LSB ÷ √12 — the RMS of a uniform error one LSB wide"),
+            R("Reference error",refError,"V","Vref × (initial error + drift × temperature span)"),
+            R("Divider ratio error",dividerError,"V","Vref × the entered divider tolerance"),
+            R("ADC offset error",offsetError,"V","offset in LSB × the LSB size"),
+            R("ADC INL error",inlError,"V","INL in LSB × the LSB size"),
+            R("Input-referred noise (RMS)",noise,"V"),
+            R("RSS random uncertainty",randomRSS,"V","√(quantisation² + noise²) — random terms add in quadrature, not arithmetically"),
+            R("Conservative total uncertainty",conservative,"V","static errors added, plus 3σ of the random ones"),
+            R("Conservative error",100*conservative/Vref,"% of full scale","total uncertainty ÷ Vref × 100"),
+            R("Resolution after error budget",accuracyBits,"bit","bits − log₂(total uncertainty ÷ LSB) — an accuracy estimate, not datasheet ENOB"));
    if(isFinite(fs)&&fs>0) out.push(R("Settling windows per sample",1/(fs*tSettle),"×",
      "the ADC acquisition window, not necessarily the whole sample period, must cover one settling time"));
    if(isFinite(Vfault)&&isFinite(Iclamp)&&Iclamp>0){
      const rProtect = Math.max(0,(Vfault-Vref)/Iclamp), extra=Math.max(0,rProtect-Rsrc);
-     out.push(R("Total protection resistance",rProtect,"Ω","to limit an external clamp to the stated current"),
+     out.push(R("Total protection resistance",rProtect,"Ω","(Vfault − Vref) ÷ clamp current — to limit an external clamp to the stated current"),
               R("Extra protection resistance",extra,"Ω",extra>0?"in addition to the entered source resistance":"the entered series resistance is enough for that fault"));
    }
    return out;
@@ -2500,18 +3542,27 @@ const EXTRA_CALCS = [
    const sensitivity=isNTC ? ntcSensitivity(temperature,sensorR,beta) : rtdSensitivity(temperature,r0);
    const sensorCurrent=isNTC ? Vbias/(sensorR+Rfixed) : Iexc;
    const power=sensorCurrent*sensorCurrent*sensorR, selfHeat=power*1000/E;
-   const out=[R("Sensor resistance",sensorR,"Ω"),R(tempToR?"Sensor temperature (entered)":"Calculated sensor temperature",temperature,"°C"),
-              R("Resistance sensitivity",sensitivity,"Ω/°C")];
+   const out=[R("Sensor resistance",sensorR,"Ω", isNTC
+                ? "R25 × exp(β × (1/T − 1/298.15)), T in kelvin — the Beta model"
+                : "IEC 60751: R0 × (1 + A·t + B·t², and a third term below 0 °C)"),
+              R(tempToR?"Sensor temperature (entered)":"Calculated sensor temperature",temperature,"°C", tempToR ? "" : (isNTC
+                ? "the Beta model turned round: 1 ÷ (1/298.15 + ln(R/R25) ÷ β)"
+                : "IEC 60751 solved for t \u2014 by formula above 0 °C, by search below it")),
+              R("Resistance sensitivity",sensitivity,"Ω/°C", isNTC
+                ? "−β × R ÷ T² — an NTC falls with temperature, and steeply"
+                : "the derivative of the IEC curve at this temperature")];
    if(isNTC){
      const vout=Vbias*(ntcTop ? Rfixed : sensorR)/(sensorR+Rfixed);
      out.push(R("NTC divider output",vout,"V",ntcTop?"NTC is Rtop (to supply); fixed resistor is Rbot":"fixed resistor is Rtop; NTC is Rbot (to ground)"),
               R("NTC divider current",sensorCurrent,"A","supply ÷ (NTC + fixed resistor)"),
-              R("NTC sensor voltage",ntcTop?Vbias-vout:vout,"V"));
+              R("NTC sensor voltage",ntcTop?Vbias-vout:vout,"V", ntcTop
+                ? "supply − the divider output — with the NTC on top, the output is across the fixed resistor"
+                : "the divider output itself — with the NTC at the bottom, the output is across it"));
    }else{
      const leadError=Rlead/Math.abs(sensitivity);
-     out.push(R("Total resistance incl. leads",sensorR+Rlead,"Ω"),
-              R("Lead-induced temperature error",leadError,"°C","two-wire estimate; 3-wire or 4-wire RTD connections cancel most lead error"),
-              R("Excitation voltage",Iexc*(sensorR+Rlead),"V"));
+     out.push(R("Total resistance incl. leads",sensorR+Rlead,"Ω","sensor + the entered lead resistance"),
+              R("Lead-induced temperature error",leadError,"°C","lead resistance ÷ sensitivity — a two-wire estimate; 3-wire or 4-wire connections cancel most of it"),
+              R("Excitation voltage",Iexc*(sensorR+Rlead),"V","excitation current × total resistance"));
    }
    out.push(R("Sensor dissipation",power,"W","I² × sensor resistance"),
             R("Estimated self-heating rise",selfHeat,"°C","sensor power ÷ entered dissipation factor"));
@@ -2546,9 +3597,12 @@ const EXTRA_CALCS = [
         Vsw<=0||fs<=0||Lstray<=0||Cpar<0||Csnub<=0||Rsnub<=0) return null;
      const cTotal=Cpar+Csnub, fr=1/(2*Math.PI*Math.sqrt(Lstray*cTotal));
      const z0=Math.sqrt(Lstray/Csnub), rcrit=2*z0, p=Csnub*Vsw*Vsw*fs;
-     return [R("Total node capacitance",cTotal,"F"),R("Ringing frequency",fr,"Hz","from stray inductance and total node capacitance"),
-             R("Snubber characteristic impedance",z0,"Ω"),R("Critical damping resistance",rcrit,"Ω","2 × √(L/C); tune on the measured ringing waveform"),
-             R("Selected-to-critical resistance",Rsnub/rcrit,"×"),R("Initial resistor current",Vsw/Rsnub,"A"),
+     return [R("Total node capacitance",cTotal,"F","existing node capacitance + the snubber capacitor"),
+             R("Ringing frequency",fr,"Hz","1 ÷ (2π√(Lstray × Ctotal)) — from stray inductance and total node capacitance"),
+             R("Snubber characteristic impedance",z0,"Ω","√(Lstray ÷ Csnub)"),
+             R("Critical damping resistance",rcrit,"Ω","2 × √(L ÷ C); tune on the measured ringing waveform"),
+             R("Selected-to-critical resistance",Rsnub/rcrit,"×","the fitted resistor ÷ the critical value"),
+             R("Initial resistor current",Vsw/Rsnub,"A","Vswitch ÷ Rsnub — the instant the node steps"),
              R("RC snubber dissipation",p,"W","Csnub × Vswitch² × switching frequency"),
              R("Suggested resistor rating",2*p,"W","minimum 2× continuous dissipation margin")];
    }
@@ -2557,8 +3611,10 @@ const EXTRA_CALCS = [
       Lleak<=0||Ipk<=0||fsRcd<=0||Vclamp<=0||Cclamp<=0||Rclamp<=0) return null;
    const energy=.5*Lleak*Ipk*Ipk, p=energy*fsRcd, iAvg=p/Vclamp, dv=energy/(Cclamp*Vclamp), rNeed=Vclamp*Vclamp/p;
    return [R("Leakage energy per cycle",energy,"J","½ × Lleak × Ipeak²"),R("RCD clamp dissipation",p,"W","leakage energy × switching frequency"),
-           R("Average clamp current",iAvg,"A"),R("Clamp capacitor ripple",dv,"V","approximate change in capacitor voltage per switching event"),
-           R("Recommended clamp resistor",rNeed,"Ω","Vclamp² ÷ clamp dissipation"),R("Selected resistor dissipation at clamp",Vclamp*Vclamp/Rclamp,"W"),
+           R("Average clamp current",iAvg,"A","clamp dissipation ÷ clamp voltage"),
+           R("Clamp capacitor ripple",dv,"V","leakage energy ÷ (Cclamp × Vclamp) — approximate change in capacitor voltage per switching event"),
+           R("Recommended clamp resistor",rNeed,"Ω","Vclamp² ÷ clamp dissipation"),
+           R("Selected resistor dissipation at clamp",Vclamp*Vclamp/Rclamp,"W","Vclamp² ÷ the fitted resistor"),
            R("Suggested resistor rating",2*p,"W","minimum 2× clamp-loss margin")];
  }},
 
@@ -2578,11 +3634,14 @@ const EXTRA_CALCS = [
    const rMin=(Vdd-Vol)/Iol, rMax=trLimit/(0.8473*Cbus), rEff=Rpull/Math.max(1,Math.round(Npull));
    const tr=.8473*rEff*Cbus, iLow=(Vdd-Vol)/rEff, pLow=Vdd*Vdd/rEff;
    const e24=e24AtMost(rMax), windowOk=rMin<=rMax;
-   const out=[R("Rise-time limit",trLimit,"s",speed),R("Minimum pull-up resistance",rMin,"Ω","below this, a device may not sink the line within VOL"),
-              R("Maximum pull-up resistance",rMax,"Ω","above this, the RC rise time exceeds the selected I²C limit"),
+   const out=[R("Rise-time limit",trLimit,"s",speed),
+              R("Minimum pull-up resistance",rMin,"Ω","(Vdd − VOL) ÷ IOL — below this, a device may not sink the line within VOL"),
+              R("Maximum pull-up resistance",rMax,"Ω","rise-time limit ÷ (0.8473 × Cbus) — above this, the RC rise time exceeds the selected I²C limit"),
               R("Effective pull-up resistance",rEff,"Ω","one fitted resistor ÷ number of parallel pull-ups"),
-              R("Actual rise time",tr,"s","30–70 % rise-time estimate"),R("Rise-time utilisation",100*tr/trLimit,"%"),
-              R("Low-level sink current",iLow,"A","at the entered VOL"),R("One-line static low power",pLow,"W","while that bus line is held low")];
+              R("Actual rise time",tr,"s","0.8473 × R × C — the 30–70 % rise of an RC, since ln(0.7 ÷ 0.3) = 0.8473"),
+              R("Rise-time utilisation",100*tr/trLimit,"%","actual rise time ÷ the limit × 100"),
+              R("Low-level sink current",iLow,"A","(Vdd − VOL) ÷ R, at the entered VOL"),
+              R("One-line static low power",pLow,"W","Vdd² ÷ R, while that bus line is held low")];
    if(windowOk) out.push(R("Largest E24 pull-up",e24,"Ω",e24>=rMin?"within the calculated window":"no E24 value fits; reduce bus capacitance or choose another speed class"));
    else out.push(R("Pull-up window",null,"","No valid resistor window: the required sink current and rise time conflict. Reduce bus capacitance, lower the speed, or use an I²C buffer."));
    return out;
@@ -2591,6 +3650,7 @@ const EXTRA_CALCS = [
 {id:"lcinput", group:"Filters", name:"LC / π input filter",
  note:[
   "Estimates an LC input filter's resonance, damping and attenuation at one noise frequency. A \u03c0 filter adds an input capacitor.",
+  "The \u03c0 case is modelled with Cin and Cout in series through the inductor, which is the high-impedance-source limit. A real source sits somewhere between that and a short, where the resonance moves towards L with Cout alone \u2014 so treat the two as the ends of a range rather than one answer, and measure the one you built.",
   "Check the converter's input-impedance stability and the capacitors' ripple-current rating on the real design; neither is visible from here."
  ],
  fields:[FS("kind","Topology",["LC filter","π input filter"],"LC filter"),F("Vnoise","Input noise amplitude","V","1"),F("fnoise","Noise frequency","Hz","100k"),
@@ -2602,9 +3662,13 @@ const EXTRA_CALCS = [
       Vnoise<0||fnoise<=0||L<=0||Cout<=0||Rseries<=0||(pi&&(!isFinite(Cin)||Cin<=0))) return null;
    const cEq=pi ? Cin*Cout/(Cin+Cout) : Cout, f0=1/(2*Math.PI*Math.sqrt(L*cEq)), z0=Math.sqrt(L/cEq), q=z0/Rseries;
    const ratio=fnoise/f0, gain=1/Math.sqrt(Math.pow(1-ratio*ratio,2)+Math.pow(ratio/q,2)), att=20*Math.log10(gain);
-   const out=[R("Effective filter capacitance",cEq,"F"),R("LC resonant frequency",f0,"Hz"),R("Characteristic impedance",z0,"Ω"),
-              R("Estimated Q",q,"×","uses the entered total series resistance"),R("Suggested damping resistance",z0,"Ω","starting value for a series-RC damping branch; tune by measurement"),
-              R("Estimated noise attenuation",att,"dB","small-signal second-order estimate at the entered noise frequency"),R("Estimated output noise",Vnoise*gain,"V")];
+   const out=[R("Effective filter capacitance",cEq,"F", pi ? "Cin \u00d7 Cout \u00f7 (Cin + Cout), the two in series through the inductor \u2014 which assumes the noise source is high-impedance. Driven from a stiff source, Cin is shorted out and the resonance is L with Cout alone" : "the output capacitor alone"),
+              R("LC resonant frequency",f0,"Hz","1 \u00f7 (2\u03c0\u221a(L \u00d7 Ceff))"),
+              R("Characteristic impedance",z0,"Ω","\u221a(L \u00f7 Ceff)"),
+              R("Estimated Q",q,"×","\u221a(L \u00f7 Ceff) \u00f7 R \u2014 uses the entered total series resistance"),
+              R("Suggested damping resistance",z0,"Ω","equal to the characteristic impedance: a starting value for a series-RC damping branch, to tune by measurement"),
+              R("Estimated noise attenuation",att,"dB","20 log\u2081\u2080 of 1 \u00f7 \u221a((1 \u2212 x\u00b2)\u00b2 + (x \u00f7 Q)\u00b2), with x = f \u00f7 f\u2080 \u2014 a small-signal second-order estimate"),
+              R("Estimated output noise",Vnoise*gain,"V","input noise \u00d7 the response at that frequency")];
    if(Math.abs(ratio-1)<0.4&&q>1) out.push(R("Resonance warning",null,"","Noise is near a high-Q LC resonance; add damping and verify the converter remains stable."));
    return out;
  }},
@@ -2617,15 +3681,21 @@ const EXTRA_CALCS = [
  fields:[F("L","Inductance","H","10u"),F("Iavg","Average inductor current","A","5"),F("dI","Peak-to-peak ripple current","A","2"),F("Isat","Datasheet saturation current","A","8"),
          F("DCR","Winding DCR","Ω","20m"),F("Rth","Inductor thermal resistance","°C/W","25"),F("Tamb","Ambient temperature","°C","25"),F("Tmax","Maximum winding temperature","°C","125"),
          F("Nturns","Core turns","×","20"),F("Ae","Core effective area","mm²","25"),F("Bsat","Core saturation flux density","T","0.3")],
+ tbl:"inductors",
  run(v){
    const {L,Iavg,dI,Isat,DCR,Rth,Tamb,Tmax,Nturns,Ae,Bsat}=v;
    if(!isFinite(L)||!isFinite(Iavg)||!isFinite(dI)||!isFinite(Isat)||!isFinite(DCR)||!isFinite(Rth)||!isFinite(Tamb)||!isFinite(Tmax)||!isFinite(Nturns)||!isFinite(Ae)||!isFinite(Bsat)||
       L<=0||Iavg<0||dI<0||Isat<=0||DCR<0||Rth<0||Tmax<=Tamb||Nturns<=0||Ae<=0||Bsat<=0) return null;
    const iPeak=Iavg+dI/2, iMin=Math.max(0,Iavg-dI/2), iRms=Math.sqrt(Iavg*Iavg+dI*dI/12), pCu=iRms*iRms*DCR, rise=pCu*Rth, temp=Tamb+rise;
    const energy=.5*L*iPeak*iPeak, b=L*iPeak/(Nturns*Ae*1e-6), satMargin=Isat/iPeak, fluxMargin=Bsat/b;
-   const out=[R("Peak inductor current",iPeak,"A"),R("Minimum inductor current",iMin,"A"),R("Inductor RMS current",iRms,"A"),
+   const out=[R("Peak inductor current",iPeak,"A","average + ΔI ÷ 2"),
+              R("Minimum inductor current",iMin,"A","average − ΔI ÷ 2"),
+              R("Inductor RMS current",iRms,"A","√(Iavg² + ΔI² ÷ 12) — the triangular ripple adds in quadrature with the DC"),
               R("Saturation current margin",satMargin,"×",satMargin<1?"Not acceptable — peak current exceeds the entered saturation rating":"datasheet saturation rating ÷ calculated peak current"),
-              R("Stored energy at peak",energy,"J"),R("Copper dissipation",pCu,"W","Irms² × DCR"),R("Estimated temperature rise",rise,"°C"),R("Estimated winding temperature",temp,"°C"),
+              R("Stored energy at peak",energy,"J","½ × L × Ipeak²"),
+              R("Copper dissipation",pCu,"W","Irms² × DCR"),
+              R("Estimated temperature rise",rise,"°C","copper loss × the entered thermal resistance"),
+              R("Estimated winding temperature",temp,"°C","ambient + the rise above"),
               R("Estimated core flux density",b,"T","L × Ipeak ÷ (turns × core area)"),R("Flux-density margin",fluxMargin,"×",fluxMargin<1?"Not acceptable — estimated flux exceeds the entered saturation flux density":"entered Bsat ÷ calculated peak flux")];
    if(temp>Tmax) out.push(R("Thermal warning",null,"","Estimated winding temperature exceeds the entered limit; select a lower-DCR or better-cooled inductor."));
    return out;
@@ -2638,15 +3708,18 @@ const EXTRA_CALCS = [
  ],
  fields:[F("Vline","Maximum normal line voltage","V","24"),F("Vsurge","Surge source voltage","V","100"),F("Vwm","TVS standoff voltage VWM","V","26"),F("Vclamp","TVS clamp voltage at IPP","V","43"),
          F("Rsource","Surge source / series impedance","Ω","2"),F("Ipp","TVS rated peak pulse current","A","10"),F("tp","Surge pulse duration","s","100u"),F("shape","Pulse energy shape factor","×","0.5")],
+ tbl:"tvs",
  run(v){
    const {Vline,Vsurge,Vwm,Vclamp,Rsource,Ipp,tp,shape}=v;
    if(!isFinite(Vline)||!isFinite(Vsurge)||!isFinite(Vwm)||!isFinite(Vclamp)||!isFinite(Rsource)||!isFinite(Ipp)||!isFinite(tp)||!isFinite(shape)||
       Vline<0||Vsurge<=0||Vwm<=0||Vclamp<=0||Rsource<=0||Ipp<=0||tp<=0||shape<=0) return null;
    const i=Math.max(0,(Vsurge-Vclamp)/Rsource), p=Vclamp*i, e=shape*p*tp, rNeed=Math.max(0,(Vsurge-Vclamp)/Ipp), util=100*i/Ipp;
-   const out=[R("Continuous-voltage margin",Vwm-Vline,"V",Vwm>=Vline?"TVS standoff is above the normal line voltage":"Not acceptable — choose VWM above the normal line voltage"),
-              R("Protected-node clamp voltage",Vclamp,"V"),R("Calculated surge current",i,"A","(surge source voltage − clamp voltage) ÷ source impedance"),
-              R("Peak-current utilisation",util,"%","must remain below the TVS pulse-current rating for the specified waveform"),
-              R("TVS peak power",p,"W"),R("Estimated pulse energy",e,"J","shape factor × clamp power × pulse duration"),
+   const out=[R("Continuous-voltage margin",Vwm-Vline,"V","VWM − the normal line voltage — "+(Vwm>=Vline?"TVS standoff is above it":"Not acceptable: choose VWM above the normal line voltage")),
+              R("Protected-node clamp voltage",Vclamp,"V","the entered VC — this, not VWM or VBR, is what the part behind the TVS sees"),
+              R("Calculated surge current",i,"A","(surge source voltage − clamp voltage) ÷ source impedance"),
+              R("Peak-current utilisation",util,"%","surge current \u00f7 the entered IPP \u00d7 100 \u2014 must remain below the pulse-current rating for the specified waveform"),
+              R("TVS peak power",p,"W","clamp voltage × the surge current above"),
+              R("Estimated pulse energy",e,"J","shape factor × clamp power × pulse duration"),
               R("Minimum series impedance for rated IPP",rNeed,"Ω","required to keep current at or below the entered IPP")];
    if(Vsurge<=Vclamp) out.push(R("Clamping note",null,"","The entered surge does not exceed the clamp voltage, so this first-pass model predicts no TVS current."));
    else if(Vwm<Vline||util>100) out.push(R("TVS selection warning",null,"","Select a higher-VWM or higher-IPP TVS, or add series impedance/fuse coordination."));
@@ -2668,11 +3741,14 @@ const EXTRA_CALCS = [
      return [R("Base drive",null,"","drive voltage must exceed VBE and collector current must be positive")];
    const ibNeed=Ic/beta, rMax=(Vdrive-Vbe)/ibNeed, rE24=e24AtMost(rMax);
    const ibActual=(Vdrive-Vbe)/rE24, betaActual=Ic/ibActual;
-   const out=[R("Base current needed",ibNeed,"A"),R("Maximum base resistance",rMax,"Ω","any larger value may leave the transistor out of saturation"),
-              R("E24 base resistor",rE24,"Ω","rounded down to preserve base drive"),R("Actual base current",ibActual,"A"),
-              R("Forced beta with E24",betaActual,"×"),R("Base resistor dissipation",ibActual*ibActual*rE24,"W")];
-   if(isFinite(Vcesat)&&Vcesat>=0) out.push(R("Transistor dissipation",Ic*Vcesat,"W","at the entered VCE(sat)"));
-   if(isFinite(hfe)&&hfe>0) out.push(R("hFE margin",hfe/betaActual,"×",hfe/betaActual<2?"small margin — use a stronger base drive or a MOSFET":"forced gain remains comfortably below the datasheet minimum"));
+   const out=[R("Base current needed",ibNeed,"A","Ic ÷ the forced beta you entered, not the datasheet hFE"),
+              R("Maximum base resistance",rMax,"Ω","(Vdrive − VBE) ÷ that base current — any larger value may leave the transistor out of saturation"),
+              R("E24 base resistor",rE24,"Ω","rounded down to preserve base drive"),
+              R("Actual base current",ibActual,"A","(Vdrive − VBE) ÷ the E24 resistor"),
+              R("Forced beta with E24",betaActual,"×","Ic ÷ the actual base current"),
+              R("Base resistor dissipation",ibActual*ibActual*rE24,"W","Ib² × R")];
+   if(isFinite(Vcesat)&&Vcesat>=0) out.push(R("Transistor dissipation",Ic*Vcesat,"W","Ic × VCE(sat), at the entered value"));
+   if(isFinite(hfe)&&hfe>0) out.push(R("hFE margin",hfe/betaActual,"×","datasheet hFE ÷ the forced beta — "+(hfe/betaActual<2?"small margin; use a stronger base drive or a MOSFET":"forced gain remains comfortably below the datasheet minimum")));
    return out;
  }},
 
@@ -2691,6 +3767,7 @@ const EXTRA_CALCS = [
          F("IsecFactor","Transformer secondary RMS-current multiplier","×","1.8","1.8",true),
          F("Rinrush","Transformer + series resistance","Ω","1","1"),F("Rbridge","Bridge thermal resistance","°C/W","15","15"),
          F("reg","Transformer regulation / no-load rise","%","15","15")],
+ tbl:["elec","diodes"],
  run(v){
    const {Vac,fline,I,Vripple,Vd,C,kripple,ESR,Rth,Tamb,Tmax,Irated,IsecFactor,Rinrush,Rbridge,reg} = v;
    if(!isFinite(Vac)||!isFinite(fline)||!isFinite(I)||!isFinite(Vripple)||!isFinite(Vd)||!isFinite(C)||
@@ -2716,9 +3793,10 @@ const EXTRA_CALCS = [
    else if(rippleUse>0.8 || tempRise>10) capAdvice="Use a 105°C high-ripple, low-ESR aluminum electrolytic and keep additional RMS-current margin.";
    else capAdvice="Use a 105°C aluminum electrolytic whose datasheet rating meets the calculated RMS ripple current; low-ESR is preferred.";
    return [R("Peak after bridge",vPeak,"V","transformer RMS × √2 minus two diode drops"),
-           R("Capacitance needed",cNeed,"F","for the allowed peak-to-peak ripple"),
+           R("Capacitance needed",cNeed,"F","Iload ÷ (2 × mains frequency × allowed ripple) — the 2 because a bridge recharges twice per cycle"),
            R("Next E24 capacitance",cE24,"F","round upward for the ripple target"),
-           R("Ripple with selected C",ripple,"V"),R("Minimum DC voltage",vMin,"V"),
+           R("Ripple with selected C",ripple,"V","Iload ÷ (2 × mains frequency × C)"),
+           R("Minimum DC voltage",vMin,"V","peak after the bridge − the ripple"),
            R("Equivalent load resistance",I>0?vMin/I:Infinity,"Ω","at minimum DC voltage"),
            R("No-load transformer secondary",vacNoLoad,"V","entered rated secondary plus transformer regulation"),
            R("Highest capacitor voltage (nominal mains)",vPeakNoLoad,"V","no-load secondary peak minus two diode drops"),
@@ -2728,19 +3806,29 @@ const EXTRA_CALCS = [
            R("Suggested transformer rating",1.25*transformerVA,"VA","includes a 25 % VA margin"),
            R("Bridge dissipation",bridgeLoss,"W","two diode drops × DC load current"),
            R("Estimated bridge temperature",bridgeTemp,"°C","ambient + bridge loss × bridge thermal resistance"),
-           R("Bridge PIV (ideal)",acPeakNoLoad,"V","one no-load transformer secondary peak"),
-           R("Suggested bridge VRRM minimum",2*acPeakNoLoad,"V","2× no-load secondary peak margin; choose the next standard rating"),
+           R("Bridge PIV (ideal)",acPeakNoLoad,"V","one no-load secondary peak. A bridge blocks one peak, not two: the conducting pair ties the secondary to the rails, so a blocked diode stands off the DC output and no more. Something close to 2 × Vpeak does appear across a blocked pair in series — which is where the confusion starts — but never across the one diode you are choosing from a catalogue. It is the centre-tapped full-wave and the half-wave that put 2 × Vpeak on a single device"),
+           R("Suggested bridge VRRM minimum",2*acPeakNoLoad,"V","2 × the peak above — margin, not physics: the PIV is one peak, and this doubles it for mains excursions and switching spikes. Choose the next standard rating"),
            R("Estimated switch-on inrush",inrush,"A","cold capacitor at zero voltage; transformer impedance must be included"),
            R("Estimated capacitor ripple current",iCapRms,"A","RMS estimate: load current × entered multiplier; verify against the actual transformer and bridge"),
            R("Capacitor ESR dissipation",pESR,"W","I² × ESR, using ESR at the rectifier ripple frequency"),
            R("Estimated capacitor temperature rise",tempRise,"°C","ESR dissipation × thermal resistance to ambient"),
            R("Estimated capacitor core temperature",tCap,"°C","ambient plus estimated self-heating"),
-           R("Ripple-current utilisation",100*rippleUse,"%","must remain below 100% of the datasheet RMS rating"),
+           R("Ripple-current utilisation",100*rippleUse,"%","estimated ripple current \u00f7 the entered rating \u00d7 100 \u2014 must remain below 100 %"),
            R("Capacitor recommendation",null,"",capAdvice)];
  }}
 ];
 
 NEW_CALCS.concat(WIRE_CALCS, POWER_CALCS, AMP_CALCS, EXTRA_CALCS).forEach(c=>CALCS.push(c));
+
+/* A calculator added later can still belong next to an older one. The rail
+   lists each group in array order, so this is where that order is set.   */
+function placeAfter(id, after){
+  const i = CALCS.findIndex(c=>c.id===id);
+  if(i<0 || CALCS.findIndex(c=>c.id===after)<0) return;
+  const [moved] = CALCS.splice(i,1);
+  CALCS.splice(CALCS.findIndex(c=>c.id===after)+1, 0, moved);
+}
+placeAfter("sync","boost");
 const GROUP_ORDER = ["Basics","Components","Filters","Op-amps","Power","Wire","Measurement"];
 CALCS.sort((a,b)=> GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group));
 
@@ -2815,11 +3903,7 @@ function viewCalc(){
     return Array.isArray(f.showWhen.is) ? f.showWhen.is.includes(current) : current===f.showWhen.is;
   });
   return `<div class="panel"><h2>${esc(c.name)}</h2>
-      ${(()=>{ const pts = [].concat(c.note||[]).filter(Boolean);
-        if(!pts.length) return "";
-        /* one point is a sentence; a lone bullet is noise */
-        return pts.length===1 ? `<p>${esc(pts[0])}</p>`
-          : `<ul class="notelist">${pts.map(n=>`<li>${esc(n)}</li>`).join("")}</ul>`; })()}
+      ${noteHTML(c.note)}
       <div class="form" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
         ${shownFields.map(f=>f.t==="check"
           ? `<div class="f checkfield${f.newRow?" newrow":""}"><label class="checkrow"><input type="checkbox" class="calcin" data-ck="${esc(f.k)}"${(raw[f.k]!==undefined ? raw[f.k]===true || raw[f.k]==="true" : !!f.def)?" checked":""}><span>${esc(f.label)}</span></label></div>`
@@ -2845,14 +3929,18 @@ function viewCalc(){
         <span class="pn">1M</span> — capital M is mega, small m is milli.</span></div>
     </div>
     <div class="panel" id="calcOut">${calcDiagram(c)}${calcOutHTML(c)}</div>
-    ${c.ref?`<div class="panel">${c.ref()}</div>`:""}`;
+    ${[].concat(c.tbl||[]).map(id=>`<div class="panel tblptr"><a class="linkish" href="#tables-${id}"
+        data-table="${id}">${esc((tableById(id)||{}).title||"Tables")} →</a></div>`).join("")}`;
 }
 
 const ALIAS = {
   cable:"awg gauge resistivity", wire:"awg gauge resistivity", smd:"eia96",
   rc:"cutoff corner low-pass high-pass rl rlc band-pass band-stop notch", lc:"resonant", buck:"smps", boost:"smps", ldo:"dropout",
   batt:"mah", divider:"potential thevenin loaded impedance", react:"impedance", rcolor:"stripes",
-  shunt:"burden", zener:"clamp",
+  shunt:"current sense burden kelvin amplifier ina common-mode error adc", heatsink:"thermal junction case interface sink θjc θcs θsa",
+  sync:"synchronous buck boost mosfet losses dead time body diode efficiency", protection:"fuse ptc resettable inrush ntc i2t",
+  opnoise:"op amp amplifier noise snr adc johnson thermal en in", diode:"rectifier schottky ultrafast reverse recovery qrr",
+  zener:"clamp",
   adc:"sampling clamp protection error budget reference quantisation noise",
   opspeed:"op amp gbw bandwidth slew rate full power",
   tempsense:"thermistor ntc pt100 pt1000 rtd temperature resistance self heating",
@@ -2867,7 +3955,7 @@ const ALIAS = {
 function viewAbout(){
   const short = u => esc(u.replace("https://",""));
   return `<div class="panel"><h2>Circuit Calcs ${esc(APP_VERSION)}</h2>
-      <p>Thirty-seven bench calculators, each drawn as the circuit it is describing, with the drawing
+      <p>Forty-one bench calculators, each drawn as the circuit it is describing, with the drawing
          redrawn as you type. It is a single HTML file: no server to run, no build step, no account to
          make, no dependency to install. Open it in a browser and it works — from a hard disk, from a
          USB stick, or from any address you care to serve it at.</p>
@@ -2897,6 +3985,10 @@ function viewAbout(){
          print a temperature rise, because that depends on insulation, bundling and the air around it.</p>
       <p>For the same reason the AWG table carries diameter, cross-section and Ω/m and no current
          rating. A number invented there would be believed.</p>
+      <p>The Tables tab is written the same way. Where a figure belongs to a class of parts rather
+         than to a part — the power rating of a chip size, the saturation of a core material, an
+         LED’s forward voltage — it is given as a range and said to be one, and the datasheet in
+         front of you governs.</p>
     </div>
     <div class="panel"><h2>Linking to one</h2>
       <p>Each calculator has its own address, so one can be kept in a tab of its own or sent to
@@ -2904,6 +3996,8 @@ function viewAbout(){
       <div class="kv">
         <b>calc.html#${esc(ui.calc)}</b>
         <span>the one you were last looking at — ${esc(calcById(ui.calc).name)}</span>
+        <b>#tables</b><span>the reference tables</span>
+        <b>#tables-elec</b><span>one section of them — every id in the Tables list works</span>
         <b>#about</b><span>this page</span>
       </div>
     </div>
@@ -2944,15 +4038,28 @@ function render(){
      list goes and the text takes the width                               */
   const info = ui.view==="about";
   $("#rail").hidden = info;
+  $("#catHead").textContent = ui.view==="tables" ? "Reference" : "Formulas";
   $("main").classList.toggle("solo", info);
   renderRail();
-  $("#stage").innerHTML = info ? viewAbout() : viewCalc();
+  $("#stage").innerHTML = info ? viewAbout() : ui.view==="tables" ? viewTables() : viewCalc();
   $$("#views button").forEach(b=>b.classList.toggle("on", b.dataset.view===ui.view));
   save();
 }
 
 function renderRail(){
   const q = ui.q.trim().toLowerCase();
+  /* the same rail, listing sections instead of calculators */
+  if(ui.view==="tables"){
+    const shown = TABLES.filter(t=>!q || (t.nav+" "+t.title+" "+t.id+" "+t.g).toLowerCase().includes(q));
+    $("#cats").innerHTML = !shown.length
+      ? `<span style="color:var(--ink3);font-size:12px">Nothing matches "${esc(ui.q.trim())}".</span>`
+      : [...new Set(shown.map(t=>t.g))].map(g =>
+          `<div class="lab" style="margin:10px 0 4px">${esc(g)}</div>` +
+          shown.filter(t=>t.g===g).map(t=>
+            `<button class="cat${ui.tableAt===t.id?" on":""}" data-table="${t.id}" title="${esc(t.title)}">
+               <span>${esc(t.nav)}</span></button>`).join("")).join("");
+    return;
+  }
   /* the title is not always what someone types, so the field labels, their
      units and the dropdown entries are searched too - and past that, the
      words below, which appear nowhere in a calculator's own wording. Those
@@ -2980,8 +4087,17 @@ document.addEventListener("click", ev=>{
   const vw = t.closest("[data-view]");
   if(vw){
     ui.view = vw.dataset.view;
-    location.hash = ui.view==="about" ? "#about" : "#"+ui.calc;
+    if(ui.view==="tables" && !tableById(ui.tableAt)) ui.tableAt = TABLES[0].id;
+    location.hash = ui.view==="about" ? "#about" : ui.view==="tables" ? "#tables" : "#"+ui.calc;
     render(); window.scrollTo(0,0);
+    return;
+  }
+  const tb = t.closest("[data-table]");
+  if(tb){
+    ev.preventDefault();
+    ui.view = "tables"; ui.tableAt = tb.dataset.table;
+    location.hash = "#tables-" + ui.tableAt;
+    render(); scrollToTable();
     return;
   }
   const ck = t.closest("[data-calc]");
@@ -3095,16 +4211,26 @@ function fromHash(){
   const hashId = decodeURIComponent(String(location.hash||"").replace(/^#/,"")).trim();
   const id = hashId==="dividerload" ? "divider" : hashId;
   if(id==="about"){ ui.view = "about"; return true; }
+  if(id==="tables"){
+    ui.view = "tables";
+    if(!tableById(ui.tableAt)) ui.tableAt = TABLES[0].id;
+    return true;
+  }
+  if(id.startsWith("tables-") && tableById(id.slice(7))){
+    ui.view = "tables"; ui.tableAt = id.slice(7); return true;
+  }
   if(id && CALCS.some(c=>c.id===id)){ ui.calc = id; ui.view = "calc"; return true; }
   return false;
 }
-window.addEventListener("hashchange", ()=>{ if(fromHash()) render(); });
+function scrollToTable(){ if(ui.view==="tables") window.scrollTo(0,0); }
+window.addEventListener("hashchange", ()=>{ if(fromHash()){ render(); scrollToTable(); } });
 
 try{
   load();
   migrateCalculatorIds();
   fromHash();
   render();
+  scrollToTable();
 }catch(err){
   const d = document.createElement("pre");
   d.className = "fatal";

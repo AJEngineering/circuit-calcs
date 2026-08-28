@@ -1,6 +1,6 @@
 # Circuit Calcs
 
-Thirty-seven bench calculators in a single HTML file. Each one draws the circuit it is describing,
+Forty-one bench calculators in a single HTML file. Each one draws the circuit it is describing,
 and the drawing redraws as you type.
 
 **[Open it →](https://ajengineering.github.io/circuit-calcs/)**
@@ -17,12 +17,12 @@ pulled out and will keep working long after anyone stops maintaining it.
 | Group | Calculators |
 |---|---|
 | Basics | Ohm's law & power · voltage divider, loaded or not · LED series resistor |
-| Components | Resistor colour code · SMD resistor code · series & parallel · reactance Xc and XL · TVS / surge protection |
+| Components | Resistor colour code · SMD resistor code · series & parallel · reactance Xc and XL · TVS / surge protection · diode selection & losses |
 | Filters | Passive RC/RL/RLC filters · active op-amp filters · differential low-pass on a difference amp · LC resonance · LC / π input filter |
-| Op-amps | Inverting · non-inverting · difference · comparator with hysteresis · bandwidth & slew rate |
-| Power | Adjustable regulator · linear regulator dissipation · buck · boost · zener shunt · BJT base resistor · bridge rectifier, transformer & smoothing · MOSFET gate drive & losses · RC snubber & RCD clamp · inductor saturation & core check · heatsink selection |
+| Op-amps | Inverting · non-inverting · difference · comparator with hysteresis · bandwidth & slew rate · noise & SNR |
+| Power | Adjustable regulator · linear regulator dissipation · buck · boost · synchronous buck / boost losses · zener shunt · BJT base resistor · bridge rectifier, transformer & smoothing · MOSFET gate drive & losses · RC snubber & RCD clamp · inductor saturation & core check · fuse / PTC / inrush · heatsink & thermal stack |
 | Wire | Wire resistance from diameter · cable size & voltage drop |
-| Measurement | Current sense shunt · ADC input front-end · NTC, PT100 & RTD · I²C pull-up & bus capacitance · PCB trace current & width · battery runtime |
+| Measurement | Current-sense shunt & ADC · ADC input front-end · NTC, PT100 & RTD · I²C pull-up & bus capacitance · PCB trace current & width · battery runtime |
 
 ## Engineering notation, in and out
 
@@ -32,6 +32,43 @@ schematic. **Input is case sensitive on purpose: `M` is mega and `m` is milli.**
 Every calculator opens with figures already in it, so you can see what it does before typing
 anything. The unit each field expects is written beside it, and stating the unit is optional.
 
+## The Tables tab
+
+A tab of its own, holding the standard values, sizes and codes the calculators are built around.
+One section at a time, picked from the rail, grouped the same way the calculators are. They live in one
+place rather than scattered under the calculators, so there is nothing to hunt for, and each
+calculator with a table behind it carries a one-line link straight to its section.
+
+| Section | What it holds |
+|---|---|
+| E series | One decade of E24, with the E12 and E6 values marked inside it, and the tolerance each series carries. |
+| Chip resistor sizes | Imperial and metric, outline in mm, the usual thick-film power rating, maximum working voltage — and the resistance above which the volts bind before the watts do. |
+| Ceramic capacitors | Standard values with their three-digit markings, the tolerance letters, and the dielectric codes with what each is for. |
+| Electrolytics | Values and voltage ratings, ripple current and ESR, the families, and the life rule. |
+| Inductors & cores | Standard values and markings, and the core materials — permeability, Bsat, and whether the knee is hard or soft. |
+| Diodes | The 1N400x and 1N540x families, the Schottky and small-signal parts, and forward drop by type. |
+| Zener voltages | The standard voltages with their 1N47xx parts, and why the middle of the range is the good part. |
+| LED forward voltage | Vf by colour, with the die that sets it. |
+| TVS / surge | Standard stand-off voltages, the families and their ratings, and the three voltages in order. |
+| Packages & θJA | SC-70 to TO-247: outline, θJA on the datasheet’s own board, and θJC where the package has a tab. |
+| PCB & spacing | Laminates with Dk, Df and Tg; copper weights and board thicknesses; and what actually indexes a clearance table. |
+| American wire gauge | Diameter, cross-section and Ω/m. |
+| Batteries | Cell voltages full to empty, the size-is-the-number rule, and what a capacity figure is quoted at. |
+
+Each section has its own address — `#tables-elec`, `#tables-zeners` — so one can be sent to
+somebody on its own.
+
+The clearance and creepage part is deliberately incomplete: the page explains what indexes those
+tables — working voltage, internal or external, coated or not, pollution degree, material group —
+and then sends you to IPC-2221B Table 6-1 and IEC 60664-1 rather than reprinting millimetres it
+cannot verify. A safety figure remembered wrongly would be believed on a mains board.
+
+Three sections exist mostly to head off a mistake. Metric **0402** is imperial **01005** and imperial
+**0402** is metric **1005** — two sizes apart, one number. A green LED is either a 2.1 V GaP part
+or a 3.2 V InGaN one, which is the difference between a resistor that works and one that does not.
+And an electrolytic wears out on a clock set by its own temperature: every 10 °C below the rating
+roughly doubles the hours it lasts.
+
 ## Where the numbers stop
 
 The cable calculator sizes a run for an allowed drop, reports the voltage actually reaching the
@@ -40,7 +77,9 @@ degree and a loaded cable is not cold. It gives watts per metre and refuses to p
 rise, because that depends on insulation, bundling and ambient air.
 
 For the same reason the AWG table carries diameter, cross-section and Ω/m and no current rating. A
-number invented there would be believed.
+number invented there would be believed. The tables above are written the same way: where a figure
+is a class of parts rather than a part, it is given as a range and said to be one — core materials,
+LED forward voltages, the power rating of a chip size. The datasheet in front of you governs.
 
 ## Linking to one
 
