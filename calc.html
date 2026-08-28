@@ -1468,8 +1468,10 @@ DIAGRAMS.snubber = (r,o) => {
   if(rcd) return SVG(
     W([[42,46],[96,46]]) + NODE(42,31,"Vin+","start") + INDH(120,46,"Lleak",vv(r,"Lleak","")) + W([[144,46],[200,46]]) + DOT(200,46) +
     W([[200,46],[200,74]]) + SWV(200,90,"SW") + W([[200,106],[200,145]]) + GND(200,145) +
-    W([[200,46],[234,46]]) + DIOH(242,46) + W([[250,46],[340,46]]) + DOT(310,46) +
-    W([[285,46],[285,76]]) + CAPV(285,80,"Cclamp",vv(r,"Cclamp","")) + W([[285,84],[285,132]]) +
+    W([[200,46],[234,46]]) + DIOH(242,46) + W([[250,46],[340,46]]) + DOT(265,46) +
+    /* the capacitor sits left of where it was: its label runs to the right,
+       and at x=285 it ran under the clamp resistor's branch at x=340 */
+    W([[265,46],[265,76]]) + CAPV(265,80,"Cclamp",vv(r,"Cclamp","")) + W([[265,84],[265,132]]) +
     W([[340,46],[340,76]]) + RESV(340,95,"Rclamp",vv(r,"Rclamp","")) + W([[340,114],[340,132]]) +
     W([[60,46],[60,132],[340,132]]) +
     TX(200,174,"leakage energy = "+gotv(o,"Leakage energy per cycle"),"middle","var(--ink3)",11) +
@@ -3143,7 +3145,7 @@ DIAGRAMS.heatsink = (r,o) => {
     TX(200,128,temperatures,"middle","var(--ink3)",10.5) +
     TX(200,149,hasSink
       ? "junction "+gotv(o,"Junction with selected sink")+"  \u00b7  margin "+gotv(o,"Junction margin")
-      : "selected sink: enter its \u03b8SA to calculate junction temperature",
+      : "enter the sink's \u03b8SA for a junction temperature",
        "middle","var(--kapton)",11.5) +
     TX(200,171,"\u03b8SA must be under "+gotv(o,"Heatsink must be under")+
                "  \u00b7  fixed path "+gotv(o,"Fixed path \u03b8JC + \u03b8CS"),
@@ -3211,8 +3213,8 @@ DIAGRAMS.opnoise = (r,o) => {
 DIAGRAMS.diode = (r,o) => SVG(
   NODE(24,70,"source","start") + W([[24,80],[165,80]]) +
   '<rect class="diagram-part" x="165" y="49" width="70" height="62" rx="2" fill="var(--card)" stroke="var(--ink)" stroke-width="'+SW+'"/>' +
-  DIOH(200,80) + W([[235,80],[330,80]]) + BOX(290,56,72,48,"LOAD",vv(r,"Iavg","")+" A") +
-  NODE(382,84,"load","end") + ARROW(42,52,150,52,"IF") +
+  DIOH(200,80) + W([[235,80],[290,80]]) + BOX(290,56,72,48,"LOAD",vv(r,"Iavg","")+" A") +
+  ARROW(42,52,150,52,"IF") +
   TX(200,137,"forward = "+gotv(o,"Forward-conduction loss")+"  \u00b7  recovery = "+gotv(o,"Reverse-recovery loss"),"middle","var(--ink3)",11) +
   TX(200,159,"total = "+gotv(o,"Total diode loss")+"  \u00b7  Tj = "+gotv(o,"Junction temperature estimate"),"middle","var(--kapton)",11.5) +
   TX(200,181,"VRRM use = "+gotv(o,"Voltage-rating use")+"  \u00b7  suggested IF(AV) = "+gotv(o,"Suggested average-current rating"),"middle","var(--esd)",10.5),
@@ -3254,8 +3256,10 @@ DIAGRAMS.hyst = (r,o) => {
     const map = t => bx + bw*(t-lo)/(hi-lo);
     xh = map(Math.max(th,tl)); xl = map(Math.min(th,tl));
   }
+  /* the axis label sits above the arrow head, not across the Vin axis that
+     starts six pixels to its right */
   g += W([[bx,axisY],[bx+bw+14,axisY]]) + W([[bx-6,axisY],[bx-6,206]])
-     + TX(bx-6,200,"Vout","middle","var(--ink3)",10)
+     + TX(bx-6,192,"Vout","middle","var(--ink3)",10)
      + TX(bx+bw+18,axisY+12,"Vin","start","var(--ink3)",10);
 
   /* which level belongs to which side depends on the topology */

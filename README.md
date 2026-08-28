@@ -120,6 +120,35 @@ and because a third of that file was calculators — the suggestion came from
 Parts Bin links here from its own toolbar. Nothing is loaded across: the link opens a tab, and each
 page still works with no network at all.
 
+## Tests
+
+```
+node test.js
+```
+
+No dependencies and nothing to install, because the page has none either. `test.js` pulls the
+script out of `calc.html`, runs it under a small stub of a DOM, and then works on the parts that
+return values rather than draw: the calculators’ `run()` functions, the diagram builders, and the
+reference tables.
+
+It checks that every calculator answers its own placeholder values without producing NaN, that
+every result row says how it was worked out or is one of the few that should not, and that each
+reference section builds with a heading and can scroll if it is wide. Then it draws **every option
+of every dropdown** — 167 diagrams across 41 calculators — and measures each one for boxes that
+overlap, wires that run through a part, labels crossed by a wire, and text outside the frame.
+
+The rest are one test per fault that was actually found, named after it. A boost’s ESR ripple
+following the peak current rather than the inductor ripple. Gate-drive loss counted against
+efficiency but not against the junction temperature. A band-stop phase that is a small negative
+angle below resonance and undefined at the notch. A bridge rectifier’s PIV being one secondary
+peak and not two. The whole E6 series being present in the electrolytic table, after a hand-typed
+list turned out to hold 33 and 330 but not 3.3.
+
+Those exist because each of them was wrong once and nobody noticed by looking. The drawing checks
+in particular found two more on the day they were written, in modes the page had never been opened
+in: an axis label crossing its own axis, and a clamp capacitor’s name running under the resistor
+branch beside it.
+
 ## Licence
 
 MIT — free to use, change and redistribute, with attribution. See [LICENSE](LICENSE).
