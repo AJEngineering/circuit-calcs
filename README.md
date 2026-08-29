@@ -5,14 +5,22 @@ and the drawing redraws as you type.
 
 **[Open it →](https://ajengineering.github.io/circuit-calcs/)**
 
-![The synchronous buck page: a live schematic, and every result saying how it was worked out](calc.png)
-
-*Every figure carries the relation that produced it, underneath the number.*
+![The differential low-pass page: the rail of calculators, a live schematic, and results that say how they were worked out](image/differential-low-pass.png)
 
 No server, no build step, no dependencies, no account, nothing to install. Download `calc.html`,
 open it in a browser, and it works — off a disk, off a USB stick, or from wherever you serve it.
 The page loads nothing external and makes no network request at all, so it works with the wire
 pulled out and will keep working long after anyone stops maintaining it.
+
+## A number, and where it came from
+
+![The Sallen-Key filter: the schematic it describes, and under each result the relation that produced it](image/sallen-key.png)
+
+The drawing follows what you type. Under every figure is the expression it came out of, and it
+follows the choices too: the same row reads `R × C` on an RC filter and `L ÷ R` on an RL one, and
+the synchronous page assigns hard switching to the high side in a buck and the low side in a
+boost. 316 of 339 result rows carry one; the rest are entered values, lookups, verdicts and unit
+conversions.
 
 ## What is in it
 
@@ -41,7 +49,7 @@ One section at a time, picked from the rail, grouped the same way the calculator
 place rather than scattered under the calculators, so there is nothing to hunt for, and each
 calculator with a table behind it carries a one-line link straight to its section.
 
-![The electrolytic section: values generated from the E6 series, the standard voltage ratings, and the life rule](tables.png)
+![The electrolytic section: values generated from the E6 series, the standard voltage ratings, and the life rule](image/tables-electrolytics.png)
 
 | Section | What it holds |
 |---|---|
@@ -110,7 +118,7 @@ is in a title.
 
 ## On a phone
 
-![The MOSFET page at 375 px: the schematic and its relations in one column](narrow.png)
+![The MOSFET page at 375 px: the schematic and its relations in one column](image/mosfet-narrow.png)
 
 The rail folds away, the drawing scales with the page, and a wide table scrolls inside its own
 panel rather than pushing the page sideways.
