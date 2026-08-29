@@ -1010,7 +1010,9 @@ function NODE(x,y,label,anchor){ return TX(x,y,label,anchor||"middle","var(--esd
 /* horizontal resistor: terminals (x-19,y) and (x+19,y) */
 function RESH(x,y,label,val){
   return `<rect class="diagram-part" x="${x-RL/2}" y="${y-RW/2}" width="${RL}" height="${RW}" fill="var(--card)" stroke="var(--ink)" stroke-width="${SW}"/>`
-       + TX(x,y-14,label) + VAL(x,y+23,val);
+       /* 37 px between a name and its value needs 51 to clear the next
+          resistor 50 px below; 34 leaves three.                        */
+       + TX(x,y-13,label) + VAL(x,y+21,val);
 }
 /* vertical resistor: terminals (x,y-19) and (x,y+19) */
 function RESV(x,y,label,val){
@@ -1381,7 +1383,7 @@ shunt: (r,o) => {
 },
 
 trace: (r,o) => SVG(
-  TX(200,28,vv(r,"layer","External")+" layer \u00b7 "+vv(r,"oz","1")+" oz copper","middle","var(--ink3)",11) +
+  TX(200,22,vv(r,"layer","External")+" layer \u00b7 "+vv(r,"oz","1")+" oz copper","middle","var(--ink3)",11) +
   ARROW(48,46,352,46,vv(r,"I","I")) +
   W([[28,64],[62,64]]) + `<rect class="diagram-part" x="62" y="57" width="276" height="14" fill="var(--kapton-soft)" stroke="var(--ink)" stroke-width="${SW}"/>` + W([[338,64],[372,64]]) +
   NODE(28,86,"SOURCE","start") + NODE(372,86,"LOAD","end") +
@@ -1422,7 +1424,7 @@ DIAGRAMS.divider = (r,o) => {
 };
 
 DIAGRAMS.adc = (r,o) => SVG(
-  W([[20,70],[61,70]]) + NODE(20,60,"signal") + VAL(48,88,vv(r,"Vsig",""),"middle") +
+  W([[20,70],[61,70]]) + NODE(20,60,"signal") + VAL(52,88,vv(r,"Vsig",""),"end") +
   RESH(80,70,"Rtop",got(o,"Safe E24 Rtop")||got(o,"Rtop needed")) + W([[99,70],[135,70]]) + DOT(135,70) +
   W([[135,70],[135,81]]) + RESV(135,100,"Rbot",vv(r,"Rbot","")) + W([[135,119],[135,136]]) + GND(135,136) +
   W([[135,70],[176,70]]) + RESH(195,70,"Rs",vv(r,"Rsrc","")) + W([[214,70],[260,70]]) + DOT(260,70) +
@@ -1581,7 +1583,7 @@ DIAGRAMS.tvs = (r,o) => SVG(
   TX(200,222,"pulse energy ≈ "+gotv(o,"Estimated pulse energy"),"middle","var(--esd)",11), 400, 239);
 
 DIAGRAMS.bjt = (r,o) => SVG(
-  W([[20,140],[71,140]]) + NODE(20,118,"GPIO","start") + VAL(20,132,vv(r,"Vdrive",""),"start") +
+  W([[20,140],[71,140]]) + NODE(20,118,"GPIO","start") + VAL(20,137,vv(r,"Vdrive",""),"start") +
   RESH(90,140,"Rb",got(o,"E24 base resistor")||got(o,"Maximum base resistance")) + W([[109,140],[190,140]]) +
   NPN(220,140) + W([[220,110],[220,108]]) + W([[220,108],[220,74]]) +
   BOX(185,38,70,36,"LOAD",vv(r,"Ic","")) + W([[220,38],[220,26]]) + NODE(220,18,"Vload") +
@@ -1596,7 +1598,7 @@ DIAGRAMS.rectifier = (r,o) => SVG(
   `<path d="M 22 104 q 10 -20 20 0 q 10 20 20 0" fill="none" stroke="var(--esd)" stroke-width="1.8"/>` +
   NODE(42,138,"AC") + VAL(42,154,vv(r,"Vac",""),"middle") +
   W([[62,94],[88,94]]) + W([[62,114],[88,114]]) + BOX(88,72,82,64,"BRIDGE","") +
-  W([[170,84],[330,84]]) + W([[170,124],[330,124]]) + NODE(350,88,"+DC","end") +
+  W([[170,84],[330,84]]) + W([[170,124],[330,124]]) + NODE(350,78,"+DC","end") +
   CAPV(240,104,"C",vv(r,"C","")) + W([[240,84],[240,100]]) + W([[240,108],[240,124]]) +
   W([[300,84],[300,91]]) + RESVSHORT(300,104,"Rload",got(o,"Equivalent load resistance")) + W([[300,117],[300,124]]) +
   TX(110,166,"Vpeak = "+gotv(o,"Peak after bridge"),"middle","var(--ink3)",11) +

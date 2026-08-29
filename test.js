@@ -102,6 +102,8 @@ const SLACK = 2.5;
    the baseline and the wire are the same number — so the text box has to be
    measured tightly and judged with almost no tolerance. */
 const TEXT_SLACK = 1;
+/* Two labels have to be apart, not merely not overlapping. */
+const TEXT_GAP = 3;
 const ASCENT = 0.78, DESCENT = 0.22;
 
 function parseSVG(svg) {
@@ -275,11 +277,22 @@ section("Nothing in a drawing sits on anything else");
         escapes.push(where + ': "' + t.text + '" runs off the canvas');
     }
     /* Two labels printed over one another read as one word: a node called
-       "signal" beside its value made signal12V, and nothing else caught it. */
+       "signal" beside its value made signal12V. Overlapping at all is a
+       fault. Merely touching is a fault too, but only side by side, where
+       "12V" and "5.6 kΩ" a pixel apart read as one run — a value sitting
+       directly under its own label is the house style and is meant to be
+       close, so a stack is judged on overlap alone. */
     for (let i = 0; i < g.texts.length; i++)
-      for (let j = i + 1; j < g.texts.length; j++)
-        if (overlaps(g.texts[i], g.texts[j], TEXT_SLACK))
-          collisions.push(where + ': "' + g.texts[i].text + '" and "' + g.texts[j].text + '" overlap');
+      for (let j = i + 1; j < g.texts.length; j++) {
+        const a = g.texts[i], b = g.texts[j];
+        const gapX = Math.max(a.x - (b.x + b.w), b.x - (a.x + a.w));
+        const gapY = Math.max(a.y - (b.y + b.h), b.y - (a.y + a.h));
+        const sideBySide = gapY < 0 && gapX >= 0 && gapX < TEXT_GAP;
+        if (Math.max(gapX, gapY) < 0)
+          collisions.push(where + ': "' + a.text + '" and "' + b.text + '" overlap');
+        else if (sideBySide)
+          collisions.push(where + ': "' + a.text + '" and "' + b.text + '" run together');
+      }
     }
     ui.calcVals[c.id] = base;
   }
