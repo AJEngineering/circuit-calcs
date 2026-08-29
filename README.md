@@ -5,7 +5,9 @@ and the drawing redraws as you type.
 
 **[Open it →](https://ajengineering.github.io/circuit-calcs/)**
 
-![Circuit Calcs](calc.png)
+![The synchronous buck page: a live schematic, and every result saying how it was worked out](calc.png)
+
+*Every figure carries the relation that produced it, underneath the number.*
 
 No server, no build step, no dependencies, no account, nothing to install. Download `calc.html`,
 open it in a browser, and it works — off a disk, off a USB stick, or from wherever you serve it.
@@ -38,6 +40,8 @@ A tab of its own, holding the standard values, sizes and codes the calculators a
 One section at a time, picked from the rail, grouped the same way the calculators are. They live in one
 place rather than scattered under the calculators, so there is nothing to hunt for, and each
 calculator with a table behind it carries a one-line link straight to its section.
+
+![The electrolytic section: values generated from the E6 series, the standard voltage ratings, and the life rule](tables.png)
 
 | Section | What it holds |
 |---|---|
@@ -103,6 +107,13 @@ your browser, and why these calculators are a separate file from the inventory t
 The box at the top filters the list. It searches the names, the field labels and the units, so
 `awg` finds the cable calculators and `eia96` finds the SMD code reader even though neither word
 is in a title.
+
+## On a phone
+
+![The MOSFET page at 375 px: the schematic and its relations in one column](narrow.png)
+
+The rail folds away, the drawing scales with the page, and a wide table scrolls inside its own
+panel rather than pushing the page sideways.
 
 ## What it remembers
 

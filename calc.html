@@ -317,7 +317,7 @@ td.num{font-variant-numeric:tabular-nums}
 <header class="top">
   <div class="brand">
     <span class="brand-mark">Circuit Calcs</span>
-    <span class="brand-sub">thirty-seven, each drawn as a schematic</span>
+    <span class="brand-sub" id="brandSub">each drawn as a schematic</span>
   </div>
   <div class="searchwrap">
     <input id="q" type="search" placeholder="divider   ·   trace width   ·   AWG   ·   buck" autocomplete="off" spellcheck="false">
@@ -1422,7 +1422,7 @@ DIAGRAMS.divider = (r,o) => {
 };
 
 DIAGRAMS.adc = (r,o) => SVG(
-  W([[20,70],[61,70]]) + NODE(20,60,"signal") + VAL(48,58,vv(r,"Vsig",""),"middle") +
+  W([[20,70],[61,70]]) + NODE(20,60,"signal") + VAL(48,88,vv(r,"Vsig",""),"middle") +
   RESH(80,70,"Rtop",got(o,"Safe E24 Rtop")||got(o,"Rtop needed")) + W([[99,70],[135,70]]) + DOT(135,70) +
   W([[135,70],[135,81]]) + RESV(135,100,"Rbot",vv(r,"Rbot","")) + W([[135,119],[135,136]]) + GND(135,136) +
   W([[135,70],[176,70]]) + RESH(195,70,"Rs",vv(r,"Rsrc","")) + W([[214,70],[260,70]]) + DOT(260,70) +
@@ -4043,6 +4043,8 @@ function render(){
   const info = ui.view==="about";
   $("#rail").hidden = info;
   $("#catHead").textContent = ui.view==="tables" ? "Reference" : "Formulas";
+  /* counted, not typed: the subtitle was three releases out of date */
+  $("#brandSub").textContent = CALCS.length + ", each drawn as a schematic";
   $("main").classList.toggle("solo", info);
   renderRail();
   $("#stage").innerHTML = info ? viewAbout() : ui.view==="tables" ? viewTables() : viewCalc();

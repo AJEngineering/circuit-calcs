@@ -244,7 +244,7 @@ function variants(c) {
 
 section("Nothing in a drawing sits on anything else");
 {
-  const boxHits = [], wireHits = [], textHits = [], escapes = [];
+  const boxHits = [], wireHits = [], textHits = [], escapes = [], collisions = [];
   let drawn = 0;
   for (const c of CALCS) {
     if (!DIAGRAMS[c.id]) continue;
@@ -274,6 +274,12 @@ section("Nothing in a drawing sits on anything else");
       if (t.x + t.w > g.w + SLACK || t.x < -SLACK || t.y + t.h > g.h + SLACK)
         escapes.push(where + ': "' + t.text + '" runs off the canvas');
     }
+    /* Two labels printed over one another read as one word: a node called
+       "signal" beside its value made signal12V, and nothing else caught it. */
+    for (let i = 0; i < g.texts.length; i++)
+      for (let j = i + 1; j < g.texts.length; j++)
+        if (overlaps(g.texts[i], g.texts[j], TEXT_SLACK))
+          collisions.push(where + ': "' + g.texts[i].text + '" and "' + g.texts[j].text + '" overlap');
     }
     ui.calcVals[c.id] = base;
   }
@@ -282,6 +288,7 @@ section("Nothing in a drawing sits on anything else");
   check(wireHits.length === 0, "no wire runs through a part", uniq(wireHits).join("\n"));
   check(textHits.length === 0, "no label is crossed by a wire", uniq(textHits).join("\n"));
   check(escapes.length === 0, "no text runs off the canvas", uniq(escapes).join("\n"));
+  check(collisions.length === 0, "no two labels are printed over one another", uniq(collisions).join("\n"));
 }
 
 section("Every reference section renders");
@@ -401,6 +408,24 @@ section("Faults that were found once");
     "PIV " + piv + ", one peak " + sec * Math.SQRT2);
   check(Math.abs(r["Suggested bridge VRRM minimum"].value - 2 * piv) < 0.01,
     "rectifier: the 2× stays where it belongs, on the suggested rating");
+}
+
+section("Counts that are counted, not typed");
+{
+  /* The subtitle said thirty-seven while the page held forty-one, and had
+     been wrong since the count last changed. Nothing that states how many
+     calculators there are may state it as a literal. */
+  check(/\$\("#brandSub"\)\.textContent = CALCS\.length/.test(HTML),
+    "the header subtitle is taken from the list, not written down");
+  const spelled = /\b(twenty|thirty|forty|fifty)[- ](one|two|three|four|five|six|seven|eight|nine)?\b/i;
+  const inApp = (HTML.match(/brand-sub[^>]*>([^<]*)</) || [, ""])[1];
+  check(!spelled.test(inApp), "no spelled-out count is left in the header", inApp);
+  const idxPath = path.join(__dirname, "index.html");
+  if (fs.existsSync(idxPath)) {
+    const desc = (fs.readFileSync(idxPath, "utf8").match(/name="description" content="([^"]*)"/) || [, ""])[1];
+    check(!spelled.test(desc) && !/\b\d+ bench/.test(desc),
+      "the landing page description carries no count to go stale", desc);
+  }
 }
 
 section("Values that were typed by hand and came out wrong");
